@@ -21,9 +21,9 @@ log = logging.getLogger("pipeline")
 
 
 def load_config():
-    with open(ROOT / "config/settings.yaml") as f:
+    with open(ROOT / "config/settings.yaml", encoding="utf-8") as f:
         settings = yaml.safe_load(f)
-    with open(ROOT / "config/categories.yaml") as f:
+    with open(ROOT / "config/categories.yaml", encoding="utf-8") as f:
         cats = yaml.safe_load(f)["categories"]
     return settings, cats
 
