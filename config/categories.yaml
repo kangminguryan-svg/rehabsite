@@ -1,0 +1,51 @@
+# 카테고리별 PubMed 검색식.
+# 이 파일이 사이트 품질을 좌우함. 실제 PubMed에서 직접 돌려보고 튜닝할 것.
+# 공통 필터(연도, 언어 등)는 settings.yaml 에서 자동으로 AND 결합됨.
+
+categories:
+  - id: stroke
+    name_ko: 뇌졸중 후 재활
+    name_en: Stroke rehabilitation
+    query: >-
+      ("Stroke Rehabilitation"[Mesh]
+       OR (("Stroke"[Mesh] OR stroke[tiab] OR "cerebral infarction"[tiab]
+            OR "intracerebral hemorrhage"[tiab] OR hemiplegia[tiab] OR hemiparesis[tiab])
+           AND (rehabilitation[tiab] OR "physical therapy"[tiab] OR "occupational therapy"[tiab]
+                OR recovery[tiab] OR "motor recovery"[tiab] OR rehabilitation[sh])))
+
+  - id: tbi
+    name_ko: 외상성 뇌손상 후 재활
+    name_en: TBI rehabilitation
+    query: >-
+      (("Brain Injuries, Traumatic"[Mesh] OR "traumatic brain injury"[tiab] OR TBI[tiab]
+        OR "head injury"[tiab] OR concussion[tiab])
+       AND (rehabilitation[tiab] OR "cognitive rehabilitation"[tiab] OR "physical therapy"[tiab]
+            OR recovery[tiab] OR rehabilitation[sh]))
+
+  - id: sci
+    name_ko: 척수손상 후 재활
+    name_en: SCI rehabilitation
+    query: >-
+      (("Spinal Cord Injuries"[Mesh] OR "spinal cord injury"[tiab] OR paraplegia[tiab]
+        OR tetraplegia[tiab] OR quadriplegia[tiab])
+       AND (rehabilitation[tiab] OR "gait training"[tiab] OR exoskeleton[tiab]
+            OR "functional electrical stimulation"[tiab] OR recovery[tiab] OR rehabilitation[sh]))
+
+  - id: hip
+    name_ko: 고관절 골절 및 치환술 후 재활
+    name_en: Hip fracture / arthroplasty rehabilitation
+    query: >-
+      (("Hip Fractures"[Mesh] OR "Arthroplasty, Replacement, Hip"[Mesh]
+        OR "hip fracture"[tiab] OR "femoral neck fracture"[tiab] OR "hip replacement"[tiab]
+        OR "hip arthroplasty"[tiab] OR "THA"[tiab])
+       AND (rehabilitation[tiab] OR "physical therapy"[tiab] OR "postoperative care"[tiab]
+            OR mobilization[tiab] OR recovery[tiab] OR rehabilitation[sh]))
+
+  - id: knee
+    name_ko: 슬관절 치환술 후 재활
+    name_en: Knee arthroplasty rehabilitation
+    query: >-
+      (("Arthroplasty, Replacement, Knee"[Mesh]
+        OR "knee replacement"[tiab] OR "knee arthroplasty"[tiab] OR "TKA"[tiab] OR "TKR"[tiab])
+       AND (rehabilitation[tiab] OR "physical therapy"[tiab] OR "postoperative care"[tiab]
+            OR "range of motion"[tiab] OR recovery[tiab] OR rehabilitation[sh]))

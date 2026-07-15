@@ -1,0 +1,35 @@
+pubmed:
+  # NCBI 요구사항: tool/email 명시. API key 있으면 초당 10req까지 허용(없으면 3req).
+  tool: rehab-papers
+  email: kangmingu.ryan@gmail.com
+  api_key_env: NCBI_API_KEY
+  min_year: 2010
+  # 공통 필터. categories.yaml의 query와 AND 결합됨.
+  common_filter: >-
+    ("2010/01/01"[Date - Publication] : "3000"[Date - Publication])
+    AND English[Language]
+    AND hasabstract
+  # 논문 타입 제한이 필요하면 여기에 추가. 지금은 열어둠.
+  # 예: AND (Randomized Controlled Trial[pt] OR Meta-Analysis[pt] OR Systematic Review[pt])
+  publication_types: []
+  retmax: 10000
+
+metrics:
+  # IF는 Clarivate 유료 지표라 미사용. OpenAlex의 2년 평균 피인용수를 IF 프록시로 사용.
+  provider: openalex
+  proxy_field: 2yr_mean_citedness
+  threshold: 2.0
+  # 지표를 못 구한 저널 처리: keep | drop | flag
+  unknown_journal_policy: flag
+  cache_days: 90
+
+fable:
+  # 기본 off. 켜면 초록 기반 요약/태그가 붙음.
+  enabled: false
+  model: claude-fable-5
+  api_key_env: ANTHROPIC_API_KEY
+  max_per_run: 50
+
+storage:
+  db_path: data/papers.db
+  export_dir: web/data

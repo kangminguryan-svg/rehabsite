@@ -1,0 +1,4 @@
+data/papers.db
+__pycache__/
+*.pyc
+.cache/

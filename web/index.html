@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>재활의학 논문 인덱스</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#16202B; --paper:#F7F8F6; --card:#FFFFFF;
+    --signal:#0E7C6B; --muted:#6B7683; --rule:#DDE1DD; --flag:#B4741C;
+    --serif:"Newsreader",Georgia,serif;
+    --sans:"IBM Plex Sans",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--paper);color:var(--ink);font:400 15px/1.6 var(--sans);
+       -webkit-font-smoothing:antialiased}
+  a{color:inherit}
+
+  .masthead{border-bottom:1px solid var(--rule);padding:28px 24px 20px;
+            display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap}
+  .masthead h1{font:500 26px/1.1 var(--serif);letter-spacing:-.01em}
+  .masthead p{color:var(--muted);font-size:13px;margin-top:6px;max-width:52ch}
+  .stamp{font:400 11px/1.5 var(--mono);color:var(--muted);text-align:right;white-space:nowrap}
+
+  .shell{display:grid;grid-template-columns:220px 1fr;gap:36px;
+         max-width:1120px;margin:0 auto;padding:28px 24px 80px}
+
+  /* 카테고리 레일 */
+  .rail{position:sticky;top:24px;align-self:start}
+  .rail button{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
+    width:100%;text-align:left;background:none;border:0;border-left:2px solid var(--rule);
+    padding:9px 12px;cursor:pointer;font:400 14px/1.35 var(--sans);color:var(--muted);
+    transition:color .15s,border-color .15s}
+  .rail button:hover{color:var(--ink)}
+  .rail button[aria-current="true"]{color:var(--ink);border-left-color:var(--signal);font-weight:500}
+  .rail .n{font:400 11px/1 var(--mono);color:var(--muted)}
+  .rail :focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+  .toolbar input,.toolbar select{font:400 13px var(--sans);color:var(--ink);
+    background:var(--card);border:1px solid var(--rule);border-radius:3px;padding:7px 10px}
+  .toolbar input{flex:1;min-width:180px}
+  .toolbar input:focus,.toolbar select:focus{outline:2px solid var(--signal);outline-offset:1px}
+  .count{font:400 11px var(--mono);color:var(--muted);margin-left:auto}
+
+  /* 논문 항목 */
+  .item{display:grid;grid-template-columns:74px 1fr;gap:18px;
+        padding:20px 0;border-top:1px solid var(--rule)}
+  .gauge{font:400 11px/1.5 var(--mono);color:var(--muted);padding-top:3px}
+  .gauge .yr{color:var(--ink);font-weight:500;display:block;font-size:12px}
+  /* 계측기: 임계값 2.0 눈금 대비 지표 막대 */
+  .bar{position:relative;height:3px;background:var(--rule);margin:7px 0 4px;border-radius:2px}
+  .bar i{position:absolute;inset:0 auto 0 0;background:var(--signal);border-radius:2px}
+  .bar::after{content:"";position:absolute;top:-3px;bottom:-3px;left:33.3%;width:1px;background:var(--ink);opacity:.45}
+  .item h3{font:400 17px/1.4 var(--serif);letter-spacing:-.005em;margin-bottom:6px}
+  .item h3 a:hover{text-decoration:underline;text-decoration-color:var(--signal)}
+  .meta{font-size:12.5px;color:var(--muted)}
+  .meta em{font-style:italic;color:var(--ink)}
+  .chip{display:inline-block;font:400 10.5px/1 var(--mono);color:var(--flag);
+        border:1px solid currentColor;border-radius:2px;padding:3px 5px;margin-left:6px;vertical-align:1px}
+  details{margin-top:10px}
+  summary{font:400 12px var(--mono);color:var(--signal);cursor:pointer;width:max-content}
+  summary:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
+  .abs{font-size:14px;line-height:1.75;color:#33404E;margin-top:8px;
+       white-space:pre-wrap;max-width:68ch;border-left:2px solid var(--rule);padding-left:14px}
+
+  .empty{padding:56px 0;color:var(--muted);font-size:14px}
+  .empty code{font:400 12px var(--mono);background:#EDEFEC;padding:2px 5px;border-radius:2px}
+
+  @media (max-width:760px){
+    .shell{grid-template-columns:1fr;gap:20px;padding-top:20px}
+    .rail{position:static;display:flex;gap:4px;overflow-x:auto;padding-bottom:6px}
+    .rail button{border-left:0;border-bottom:2px solid var(--rule);white-space:nowrap;padding:8px 10px}
+    .rail button[aria-current="true"]{border-bottom-color:var(--signal)}
+    .item{grid-template-columns:1fr;gap:8px}
+    .gauge{display:flex;align-items:center;gap:10px}
+    .bar{width:70px;margin:0}
+  }
+</style>
+</head>
+<body>
+<header class="masthead">
+  <div>
+    <h1>재활의학 논문 인덱스</h1>
+    <p>2010년 이후 PubMed 수록 논문 중 저널 인용지표가 기준을 넘는 것만 모읍니다. 매일 새벽 5시에 갱신됩니다.</p>
+  </div>
+  <div class="stamp" id="stamp"></div>
+</header>
+
+<main class="shell">
+  <nav class="rail" id="rail" aria-label="분야"></nav>
+  <section>
+    <div class="toolbar">
+      <input id="q" type="search" placeholder="제목 · 저널 · 저자 검색" aria-label="검색">
+      <select id="sort" aria-label="정렬">
+        <option value="year">최신순</option>
+        <option value="metric">지표순</option>
+      </select>
+      <span class="count" id="count"></span>
+    </div>
+    <div id="list"></div>
+  </section>
+</main>
+
+<script>
+const THRESHOLD = 2.0;
+const state = { cats: [], active: null, papers: [], q: "", sort: "year" };
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
+
+async function boot() {
+  let idx;
+  try {
+    idx = await (await fetch("data/index.json")).json();
+  } catch {
+    document.getElementById("list").innerHTML =
+      `<p class="empty">데이터가 아직 없습니다. <code>python -m src.pipeline backfill</code> 을 실행하면 이 자리에 논문이 채워집니다.</p>`;
+    return;
+  }
+  state.cats = idx.categories;
+  document.getElementById("stamp").textContent =
+    `기준 ${idx.metric.label}\n임계값 ≥ ${idx.metric.threshold}\n갱신 ${new Date(idx.updatedAt).toLocaleString("ko-KR")}`;
+  drawRail();
+  select(state.cats[0].id);
+}
+
+function drawRail() {
+  document.getElementById("rail").innerHTML = state.cats.map(c =>
+    `<button data-id="${c.id}" aria-current="${c.id === state.active}">
+       <span>${esc(c.nameKo)}</span><span class="n">${c.count}</span></button>`).join("");
+  document.querySelectorAll("#rail button").forEach(b =>
+    b.onclick = () => select(b.dataset.id));
+}
+
+async function select(id) {
+  state.active = id;
+  drawRail();
+  state.papers = await (await fetch(`data/${id}.json`)).json();
+  render();
+}
+
+function render() {
+  const q = state.q.toLowerCase();
+  let rows = state.papers.filter(p => !q ||
+    (p.title + " " + (p.journal || "") + " " + (p.authors || []).join(" ")).toLowerCase().includes(q));
+  rows.sort(state.sort === "metric"
+    ? (a, b) => (b.metric ?? -1) - (a.metric ?? -1)
+    : (a, b) => (b.year ?? 0) - (a.year ?? 0));
+
+  document.getElementById("count").textContent = `${rows.length}편`;
+  document.getElementById("list").innerHTML = rows.length ? rows.map(card).join("")
+    : `<p class="empty">조건에 맞는 논문이 없습니다.</p>`;
+}
+
+function card(p) {
+  const authors = p.authors?.length
+    ? esc(p.authors[0]) + (p.authors.length > 1 ? ` 외 ${p.authors.length - 1}인` : "") : "";
+  // 막대: 임계값 2.0이 33.3% 지점에 오도록 6.0 만점으로 정규화
+  const pct = p.metric == null ? 0 : Math.min(100, (p.metric / 6) * 100);
+  return `<article class="item">
+    <div class="gauge">
+      <span class="yr">${p.year ?? "—"}</span>
+      <div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>
+      ${p.metric == null ? "지표 없음" : p.metric.toFixed(2)}
+    </div>
+    <div>
+      <h3><a href="https://pubmed.ncbi.nlm.nih.gov/${p.pmid}/" target="_blank" rel="noopener">${esc(p.title)}</a></h3>
+      <p class="meta"><em>${esc(p.journal || "")}</em>${authors ? " · " + authors : ""} · PMID ${p.pmid}
+        ${p.flagged ? '<span class="chip">지표 확인 필요</span>' : ""}</p>
+      ${p.abstract ? `<details><summary>초록 보기</summary><p class="abs">${esc(p.abstract)}</p></details>` : ""}
+    </div>
+  </article>`;
+}
+
+document.getElementById("q").oninput = e => { state.q = e.target.value; render(); };
+document.getElementById("sort").onchange = e => { state.sort = e.target.value; render(); };
+boot();
+</script>
+</body>
+</html>
