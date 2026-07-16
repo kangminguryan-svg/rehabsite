@@ -109,6 +109,16 @@ def relookup():
     ).fetchall()
     log.info("[relookup] 지표 미확보 %d편 재조회 시작", len(rows))
 
+    # 1단계: 고유 ISSN을 배치(50개씩)로 미리 조회해 캐시를 채운다.
+    #   논문마다 개별 요청하면 요청 수가 수천 건이라 429에 걸린다.
+    issns = sorted({r["journal_issn"] for r in rows if r["journal_issn"]})
+    log.info("[relookup] 1단계: 고유 ISSN %d개 배치 조회", len(issns))
+    lookup.warm_issn_cache(
+        issns, progress=lambda done, tot: log.info("[relookup]   ISSN %d/%d", done, tot))
+
+    # 2단계: 논문별 확정. ISSN 있는 건 대부분 캐시 히트(네트워크 거의 없음),
+    #   ISSN 없는 건만 저널명 폴백(고유 이름도 캐시됨).
+    log.info("[relookup] 2단계: 논문별 지표 확정")
     fixed = 0
     for i, r in enumerate(rows, 1):
         value, source = lookup.lookup(r["journal_issn"], r["journal"])
@@ -118,9 +128,9 @@ def relookup():
         )
         if value is not None:
             fixed += 1
-        if i % 200 == 0:
+        if i % 500 == 0:
             conn.commit()
-            log.info("[relookup] %d/%d 진행 (지표 확보 %d)", i, len(rows), fixed)
+            log.info("[relookup]   %d/%d 확정 (지표 확보 %d)", i, len(rows), fixed)
     conn.commit()
     log.info("[relookup] 완료: %d편 중 %d편 지표 확보", len(rows), fixed)
     conn.close()

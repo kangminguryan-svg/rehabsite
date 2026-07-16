@@ -76,6 +76,28 @@ class MetricLookup:
         )
         self.conn.commit()
 
+    def warm_issn_cache(self, issns, chunk: int = 50, progress=None) -> int:
+        """여러 ISSN을 한 번에(50개씩) 조회해 캐시를 미리 채운다.
+        개별 조회 대비 요청 수를 크게 줄여 429를 회피한다. 확보한 저널 수 반환."""
+        issns = [x for x in issns if x]
+        got = 0
+        for i in range(0, len(issns), chunk):
+            part = issns[i:i + chunk]
+            results = self._fetch_sources(
+                {"filter": "issn:" + "|".join(part), "per-page": chunk})
+            if results:
+                for s in results:
+                    v = self._metric_of(s)
+                    if v is None:
+                        continue
+                    # source가 가진 모든 ISSN에 대해 캐시(요청 ISSN이 issn_l과 달라도 매칭되게)
+                    for isn in filter(None, [s.get("issn_l"), *(s.get("issn") or [])]):
+                        self._store(isn, s.get("display_name"), v, "openalex")
+                        got += 1
+            if progress:
+                progress(min(i + chunk, len(issns)), len(issns))
+        return got
+
     def lookup(self, issn: str, journal_name: str = None) -> tuple[float | None, str]:
         """(지표값, 출처). ISSN 조회 실패 시 저널명으로 폴백. 최종 실패는 (None, 'unknown')."""
         # 1) 캐시 (ISSN → 이름 순)
