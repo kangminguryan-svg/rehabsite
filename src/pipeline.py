@@ -101,22 +101,26 @@ def export():
     conn = db.connect(str(ROOT / settings["storage"]["db_path"]))
     out_dir = ROOT / settings["storage"]["export_dir"]
     out_dir.mkdir(parents=True, exist_ok=True)
-    keep = (1, 2) if settings["metrics"]["unknown_journal_policy"] == "flag" else (1,)
+    # 임계값은 export 시점에 metric_value로 직접 판정한다.
+    # (수집 시점의 passed_filter에 의존하면 임계값을 바꿀 때마다 재수집이 필요해짐)
+    threshold = settings["metrics"]["threshold"]
+    flag_unknown = settings["metrics"]["unknown_journal_policy"] == "flag"
+    cond = "p.metric_value >= ?" + (" OR p.metric_value IS NULL" if flag_unknown else "")
 
     index = []
     for cat in cats:
         rows = conn.execute(
             f"SELECT p.* FROM papers p JOIN paper_categories c ON p.pmid=c.pmid "
-            f"WHERE c.category_id=? AND p.passed_filter IN ({','.join('?'*len(keep))}) "
+            f"WHERE c.category_id=? AND ({cond}) "
             f"ORDER BY p.pub_year DESC, p.pmid DESC",
-            (cat["id"], *keep),
+            (cat["id"], threshold),
         ).fetchall()
         papers = [{
             "pmid": r["pmid"], "doi": r["doi"], "title": r["title"],
             "abstract": r["abstract"], "journal": r["journal"], "year": r["pub_year"],
             "authors": json.loads(r["authors"] or "[]"),
             "pubTypes": json.loads(r["pub_types"] or "[]"),
-            "metric": r["metric_value"], "flagged": r["passed_filter"] == 2,
+            "metric": r["metric_value"], "flagged": r["metric_value"] is None,
             "summary": json.loads(r["summary"]) if r["summary"] else None,
         } for r in rows]
         (out_dir / f"{cat['id']}.json").write_text(

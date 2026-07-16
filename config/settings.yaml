@@ -18,9 +18,10 @@ metrics:
   # IF는 Clarivate 유료 지표라 미사용. OpenAlex의 2년 평균 피인용수를 IF 프록시로 사용.
   provider: openalex
   proxy_field: 2yr_mean_citedness
-  threshold: 2.0
+  threshold: 10.0
   # 지표를 못 구한 저널 처리: keep | drop | flag
-  unknown_journal_policy: flag
+  # drop: 지표 없는 저널은 제외 (임계값이 높을 땐 flag로 두면 잡음이 많아짐)
+  unknown_journal_policy: drop
   cache_days: 90
 
 fable:
