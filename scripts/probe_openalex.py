@@ -6,6 +6,7 @@
   python scripts/probe_openalex.py "The Lancet"          # 다른 저널
 """
 import sys
+import time
 
 import requests
 
@@ -17,9 +18,25 @@ def show(title: str, params: dict) -> None:
     params = {**params, "mailto": MAILTO}
     print(f"\n=== {title} ===")
     print(f"    params: {params}")
+    r = None
+    for attempt in range(5):  # 429/5xx 백오프
+        try:
+            r = requests.get(OPENALEX, params=params, timeout=30)
+        except requests.RequestException as e:
+            print(f"    ⚠ 요청 실패: {e}")
+            time.sleep(2 ** attempt)
+            continue
+        if r.status_code == 429 or r.status_code >= 500:
+            ra = r.headers.get("Retry-After", "")
+            wait = float(ra) if ra.replace(".", "", 1).isdigit() else 2 ** attempt
+            print(f"    HTTP {r.status_code} → {wait:.0f}s 대기 후 재시도")
+            time.sleep(wait)
+            continue
+        break
+    if r is None:
+        return
+    print(f"    HTTP {r.status_code}  URL={r.url}")
     try:
-        r = requests.get(OPENALEX, params=params, timeout=30)
-        print(f"    HTTP {r.status_code}  URL={r.url}")
         r.raise_for_status()
         results = r.json().get("results", [])
     except requests.RequestException as e:

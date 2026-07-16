@@ -18,6 +18,8 @@ class MetricLookup:
         self.cache_days = cache_days
         self.session = requests.Session()
         self.mailto = mailto  # OpenAlex polite pool
+        # OpenAlex 폴라이트 풀은 초당 10건까지지만 여유를 둔다(버스트 429 회피).
+        self.delay = 0.15
 
     def _cached(self, issn: str):
         # 지표값이 실제로 있는 캐시만 히트로 취급. None 캐시는 매번 재시도한다
@@ -29,22 +31,40 @@ class MetricLookup:
         ).fetchone()
         return (row["metric_value"], row["source"]) if row else None
 
-    def _query_openalex(self, params: dict):
-        """OpenAlex sources 조회 → (metric_value, display_name, issn_l) 또는 None."""
+    def _cached_by_name(self, name: str):
+        # 이름 폴백으로 확보한 지표를 이름으로 재히트(같은 저널 반복 조회 방지).
+        row = self.conn.execute(
+            f"SELECT metric_value, source FROM journal_metrics "
+            f"WHERE journal_name=? AND metric_value IS NOT NULL AND NOT ({STALE_SQL}) "
+            f"LIMIT 1",
+            (name, self.cache_days),
+        ).fetchone()
+        return (row["metric_value"], row["source"]) if row else None
+
+    @staticmethod
+    def _metric_of(src: dict):
+        return (src.get("summary_stats") or {}).get("2yr_mean_citedness")
+
+    def _fetch_sources(self, params: dict):
+        """OpenAlex sources 조회 → results 리스트 또는 None(실패).
+        429/5xx는 지수 백오프로 재시도하고 Retry-After 헤더를 존중한다."""
         if self.mailto:
             params["mailto"] = self.mailto
-        try:
-            r = self.session.get(OPENALEX, params=params, timeout=30)
-            time.sleep(0.1)
-            r.raise_for_status()
-            results = r.json().get("results", [])
-        except requests.RequestException:
-            return None
-        if not results:
-            return None
-        src = results[0]
-        value = (src.get("summary_stats") or {}).get("2yr_mean_citedness")
-        return value, src.get("display_name"), src.get("issn_l")
+        for attempt in range(5):
+            try:
+                r = self.session.get(OPENALEX, params=params, timeout=30)
+            except requests.RequestException:
+                time.sleep(2 ** attempt)
+                continue
+            if r.status_code == 429 or r.status_code >= 500:
+                ra = r.headers.get("Retry-After", "")
+                time.sleep(float(ra) if ra.replace(".", "", 1).isdigit() else 2 ** attempt)
+                continue
+            if not r.ok:
+                return None
+            time.sleep(self.delay)
+            return r.json().get("results", [])
+        return None  # 재시도 소진
 
     def _store(self, issn, name, value, source):
         self.conn.execute(
@@ -58,29 +78,40 @@ class MetricLookup:
 
     def lookup(self, issn: str, journal_name: str = None) -> tuple[float | None, str]:
         """(지표값, 출처). ISSN 조회 실패 시 저널명으로 폴백. 최종 실패는 (None, 'unknown')."""
-        # 1) ISSN 캐시
+        # 1) 캐시 (ISSN → 이름 순)
         if issn:
             hit = self._cached(issn)
+            if hit:
+                return hit
+        if journal_name:
+            hit = self._cached_by_name(journal_name)
             if hit:
                 return hit
 
         # 2) ISSN 직접 조회
         if issn:
-            res = self._query_openalex({"filter": f"issn:{issn}", "per-page": 1})
-            if res and res[0] is not None:
-                value, name, _ = res
-                self._store(issn, name or journal_name, value, "openalex")
-                return value, "openalex"
+            results = self._fetch_sources({"filter": f"issn:{issn}", "per-page": 1})
+            if results and self._metric_of(results[0]) is not None:
+                src = results[0]
+                self._store(issn, src.get("display_name") or journal_name,
+                            self._metric_of(src), "openalex")
+                return self._metric_of(src), "openalex"
 
         # 3) 저널명 폴백 (ISSN이 없거나 ISSN으로 못 찾은 경우).
         #    NEJM 처럼 레코드에 ISSN이 누락돼도 이름으로 지표를 확보한다.
+        #    여러 후보 중 지표가 있으면서 논문 수가 가장 많은(= 대표) 저널을 택한다.
         if journal_name:
-            res = self._query_openalex({"search": journal_name, "per-page": 1})
-            if res and res[0] is not None:
-                value, name, issn_l = res
-                key = issn or issn_l or f"name:{journal_name}"
-                self._store(key, name or journal_name, value, "openalex:byname")
-                return value, "openalex:byname"
+            results = self._fetch_sources(
+                {"filter": f"display_name.search:{journal_name}", "per-page": 5})
+            if results:
+                cand = [s for s in results if self._metric_of(s) is not None]
+                if cand:
+                    best = max(cand, key=lambda s: s.get("works_count") or 0)
+                    value = self._metric_of(best)
+                    key = issn or best.get("issn_l") or f"name:{journal_name}"
+                    # journal_name(=PubMed 표기)으로 저장해야 다음번 이름 캐시가 히트함
+                    self._store(key, journal_name, value, "openalex:byname")
+                    return value, "openalex:byname"
 
         # 4) 전부 실패
         if issn:
