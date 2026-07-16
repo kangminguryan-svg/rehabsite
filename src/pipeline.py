@@ -2,6 +2,7 @@
 
   python -m src.pipeline backfill   # 2010년 이후 전체 최초 수집
   python -m src.pipeline daily      # 마지막 실행 이후 신규만
+  python -m src.pipeline relookup   # 지표가 비어있는(unknown) 논문만 재조회
   python -m src.pipeline export     # DB -> 프론트용 JSON
 """
 import argparse
@@ -96,6 +97,35 @@ def run(mode: str):
     conn.close()
 
 
+def relookup():
+    """지표가 비어있는(metric_value IS NULL) 논문만 골라 지표를 다시 조회한다.
+    전체 재수집(backfill) 없이 개선된 조회 로직을 기존 데이터에 적용하기 위함."""
+    settings, cats = load_config()
+    conn = db.connect(str(ROOT / settings["storage"]["db_path"]))
+    lookup = m.MetricLookup(conn, settings["metrics"]["cache_days"], settings["pubmed"]["email"])
+
+    rows = conn.execute(
+        "SELECT pmid, journal, journal_issn FROM papers WHERE metric_value IS NULL"
+    ).fetchall()
+    log.info("[relookup] 지표 미확보 %d편 재조회 시작", len(rows))
+
+    fixed = 0
+    for i, r in enumerate(rows, 1):
+        value, source = lookup.lookup(r["journal_issn"], r["journal"])
+        conn.execute(
+            "UPDATE papers SET metric_value=?, metric_source=? WHERE pmid=?",
+            (value, source, r["pmid"]),
+        )
+        if value is not None:
+            fixed += 1
+        if i % 200 == 0:
+            conn.commit()
+            log.info("[relookup] %d/%d 진행 (지표 확보 %d)", i, len(rows), fixed)
+    conn.commit()
+    log.info("[relookup] 완료: %d편 중 %d편 지표 확보", len(rows), fixed)
+    conn.close()
+
+
 def export():
     settings, cats = load_config()
     conn = db.connect(str(ROOT / settings["storage"]["db_path"]))
@@ -141,9 +171,12 @@ def export():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["backfill", "daily", "export"])
+    ap.add_argument("mode", choices=["backfill", "daily", "relookup", "export"])
     args = ap.parse_args()
     if args.mode == "export":
+        export()
+    elif args.mode == "relookup":
+        relookup()
         export()
     else:
         run(args.mode)

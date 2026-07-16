@@ -86,13 +86,17 @@ def _parse_article(art) -> dict | None:
         medline = _text(art, ".//JournalIssue/PubDate/MedlineDate", "")
         year = medline[:4] if medline[:4].isdigit() else None
 
+    # ISSN: <Journal><ISSN> 이 없는 레코드가 있어(예: 일부 NEJM 레코드)
+    # MedlineJournalInfo/ISSNLinking 으로 폴백한다.
+    issn = _text(art, ".//Journal/ISSN") or _text(art, ".//MedlineJournalInfo/ISSNLinking")
+
     return {
         "pmid": pmid,
         "doi": doi,
         "title": "".join(art.find(".//ArticleTitle").itertext()).strip(),
         "abstract": abstract,
         "journal": _text(art, ".//Journal/Title"),
-        "journal_issn": _text(art, ".//Journal/ISSN"),
+        "journal_issn": issn,
         "pub_year": int(year) if year and year.isdigit() else None,
         "pub_date": year,
         "authors": authors,
