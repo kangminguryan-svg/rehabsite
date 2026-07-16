@@ -29,6 +29,10 @@ def show(title: str, params: dict) -> None:
         if r.status_code == 429 or r.status_code >= 500:
             ra = r.headers.get("Retry-After", "")
             wait = float(ra) if ra.replace(".", "", 1).isdigit() else 2 ** attempt
+            if wait > 120:  # 일일 한도 소진 — 대기 무의미
+                print(f"    HTTP {r.status_code}  Retry-After={wait:.0f}s (~{wait/3600:.1f}시간)")
+                print("    ⚠ OpenAlex 일일 요청 한도 초과. UTC 자정 리셋 후 다시 시도하세요.")
+                return
             print(f"    HTTP {r.status_code} → {wait:.0f}s 대기 후 재시도")
             time.sleep(wait)
             continue

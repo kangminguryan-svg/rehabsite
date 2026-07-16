@@ -116,6 +116,14 @@ def relookup():
     lookup.warm_issn_cache(
         issns, progress=lambda done, tot: log.info("[relookup]   ISSN %d/%d", done, tot))
 
+    if lookup.rate_limited:
+        hrs = lookup.retry_after / 3600
+        log.warning("[relookup] 중단: OpenAlex 일일 요청 한도를 초과했습니다. "
+                    "약 %.1f시간 후(UTC 자정 리셋) 다시 실행하세요. "
+                    "기존 데이터는 그대로 두었습니다.", hrs)
+        conn.close()
+        return
+
     # 2단계: 논문별 확정. ISSN 있는 건 대부분 캐시 히트(네트워크 거의 없음),
     #   ISSN 없는 건만 저널명 폴백(고유 이름도 캐시됨).
     log.info("[relookup] 2단계: 논문별 지표 확정")

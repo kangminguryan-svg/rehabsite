@@ -10,6 +10,9 @@ import requests
 
 OPENALEX = "https://api.openalex.org/sources"
 STALE_SQL = "julianday('now') - julianday(updated_at) > ?"
+# Retry-After가 이보다 크면 순간 제한이 아니라 일일 한도 소진으로 보고
+# 대기하지 않고 즉시 중단한다(무한정 hang 방지).
+RATE_LIMIT_GIVEUP = 120
 
 
 class MetricLookup:
@@ -20,6 +23,9 @@ class MetricLookup:
         self.mailto = mailto  # OpenAlex polite pool
         # OpenAlex 폴라이트 풀은 초당 10건까지지만 여유를 둔다(버스트 429 회피).
         self.delay = 0.15
+        # 일일 한도 소진이 감지되면 True. 이후 조회는 즉시 포기한다.
+        self.rate_limited = False
+        self.retry_after = 0
 
     def _cached(self, issn: str):
         # 지표값이 실제로 있는 캐시만 히트로 취급. None 캐시는 매번 재시도한다
@@ -47,7 +53,10 @@ class MetricLookup:
 
     def _fetch_sources(self, params: dict):
         """OpenAlex sources 조회 → results 리스트 또는 None(실패).
-        429/5xx는 지수 백오프로 재시도하고 Retry-After 헤더를 존중한다."""
+        429/5xx는 지수 백오프로 재시도하고 Retry-After 헤더를 존중한다.
+        단, Retry-After가 매우 크면(일일 한도 소진) 대기하지 않고 즉시 포기한다."""
+        if self.rate_limited:
+            return None  # 이미 한도 소진 감지됨 — 더 두드리지 않는다
         if self.mailto:
             params["mailto"] = self.mailto
         for attempt in range(5):
@@ -58,7 +67,13 @@ class MetricLookup:
                 continue
             if r.status_code == 429 or r.status_code >= 500:
                 ra = r.headers.get("Retry-After", "")
-                time.sleep(float(ra) if ra.replace(".", "", 1).isdigit() else 2 ** attempt)
+                wait = float(ra) if ra.replace(".", "", 1).isdigit() else 2 ** attempt
+                if wait > RATE_LIMIT_GIVEUP:
+                    # 일일 한도 소진: 지금 기다려봐야 소용없으므로 중단 신호를 남긴다.
+                    self.rate_limited = True
+                    self.retry_after = wait
+                    return None
+                time.sleep(wait)
                 continue
             if not r.ok:
                 return None
