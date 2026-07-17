@@ -17,15 +17,19 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements.txt
-      - name: Run daily incremental sync
+      # DB는 저장소에 올리지 않으므로(gitignore) 매번 전체 수집 → 자체 완결적.
+      # 2022년 이후 큐레이션 저널 기준이라 몇 분 내 완료.
+      - name: Collect papers
         env:
           NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python -m src.pipeline daily
+        run: python -m src.pipeline backfill
+      - name: Refresh citation counts
+        run: python -m src.pipeline citations
       - name: Commit updated data
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/papers.db web/data
+          git add web/data
           git diff --staged --quiet || git commit -m "chore: daily sync $(date -u +%F)"
           git push

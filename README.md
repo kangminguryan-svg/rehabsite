@@ -34,8 +34,9 @@ pip install -r requirements.txt
 export NCBI_API_KEY=...        # https://account.ncbi.nlm.nih.gov 에서 발급, 없어도 동작하나 느림
 
 python -m src.pipeline verify-journals   # (선택) 저널 약어별 건수 확인 — 오타 점검
-python -m src.pipeline backfill          # 2010년 이후 연 단위 전체 수집
+python -m src.pipeline backfill          # 2022년 이후 연 단위 전체 수집
 python -m src.pipeline daily             # 이후 증분
+python -m src.pipeline citations         # 피인용수(NIH iCite) 조회·갱신
 python -m src.pipeline export            # DB → web/data/*.json
 
 cd web && python -m http.server 8000     # http://localhost:8000

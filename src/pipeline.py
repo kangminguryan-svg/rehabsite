@@ -2,6 +2,7 @@
 
   python -m src.pipeline backfill         # 2010년 이후 연 단위로 전체 최초 수집
   python -m src.pipeline daily            # 마지막 실행 이후 신규만
+  python -m src.pipeline citations        # 피인용수(iCite) 갱신
   python -m src.pipeline export           # DB -> 프론트용 JSON
   python -m src.pipeline verify-journals  # 저널 약어별 PubMed 건수 확인(수집 안 함)
 
@@ -135,6 +136,25 @@ def run(mode: str):
     conn.close()
 
 
+def citations():
+    """수집된 모든 논문의 총 피인용수를 iCite에서 조회해 갱신한다."""
+    from . import icite
+    settings, _groups, _tf, _kw = load_config()
+    conn = db.connect(str(ROOT / settings["storage"]["db_path"]))
+    pmids = [r["pmid"] for r in conn.execute("SELECT pmid FROM papers")]
+    log.info("[citations] %d편 피인용수 조회(iCite)", len(pmids))
+    counts = icite.fetch_citations(
+        pmids, progress=lambda done, tot: log.info("[citations]   %d/%d", done, tot))
+    got = 0
+    for pmid, c in counts.items():
+        conn.execute("UPDATE papers SET citation_count=? WHERE pmid=?", (c, pmid))
+        if c is not None:
+            got += 1
+    conn.commit()
+    log.info("[citations] 완료: %d편 피인용수 확보", got)
+    conn.close()
+
+
 def verify_journals():
     """저널 약어([ta])별 PubMed 건수를 출력. 약어 오타(건수 0)를 잡기 위함."""
     settings, groups, _, _ = load_config()
@@ -186,6 +206,7 @@ def export():
                 "abstract": r["abstract"], "journal": r["journal"], "year": r["pub_year"],
                 "authors": json.loads(r["authors"] or "[]"),
                 "pubTypes": json.loads(r["pub_types"] or "[]"),
+                "citations": r["citation_count"],
                 "summary": json.loads(r["summary"]) if r["summary"] else None,
             } for r in rows]
             (out_dir / f"{sc['id']}.json").write_text(
@@ -209,12 +230,16 @@ def export():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["backfill", "daily", "export", "verify-journals"])
+    ap.add_argument("mode", choices=["backfill", "daily", "citations",
+                                     "export", "verify-journals"])
     args = ap.parse_args()
     if args.mode == "export":
         export()
     elif args.mode == "verify-journals":
         verify_journals()
+    elif args.mode == "citations":
+        citations()
+        export()
     else:
         run(args.mode)
         export()
