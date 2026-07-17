@@ -48,6 +48,11 @@
     background:var(--card);border:1px solid var(--rule);border-radius:3px;padding:7px 10px}
   .toolbar input{flex:1;min-width:180px}
   .toolbar input:focus,.toolbar select:focus{outline:2px solid var(--signal);outline-offset:1px}
+  .refresh{font:400 13px var(--sans);color:var(--signal);background:var(--card);
+    border:1px solid var(--rule);border-radius:3px;padding:7px 12px;cursor:pointer;white-space:nowrap}
+  .refresh:hover:not(:disabled){border-color:var(--signal)}
+  .refresh:disabled{color:var(--muted);cursor:default}
+  .refresh:focus-visible{outline:2px solid var(--signal);outline-offset:1px}
   .count{font:400 11px var(--mono);color:var(--muted);margin-left:auto}
   .crumb{font:400 12px var(--mono);color:var(--muted);margin-bottom:18px}
   .crumb b{color:var(--ink);font-weight:500}
@@ -57,7 +62,6 @@
         padding:20px 0;border-top:1px solid var(--rule)}
   .side{font:400 11px/1.5 var(--mono);color:var(--muted);padding-top:3px}
   .side .yr{color:var(--ink);font-weight:500;display:block;font-size:13px;margin-bottom:3px}
-  .side .cite{display:block;color:var(--signal);margin-bottom:3px}
   .item h3{font:400 17px/1.4 var(--serif);letter-spacing:-.005em;margin-bottom:6px}
   .item h3 a:hover{text-decoration:underline;text-decoration-color:var(--signal)}
   .meta{font-size:12.5px;color:var(--muted)}
@@ -105,9 +109,9 @@
       <input id="q" type="search" placeholder="제목 · 저널 · 저자 검색" aria-label="검색">
       <select id="sort" aria-label="정렬">
         <option value="year">최신순</option>
-        <option value="cited">피인용순</option>
         <option value="journal">저널순</option>
       </select>
+      <button id="refresh" class="refresh" type="button" title="최신 데이터로 갱신">↻ 갱신</button>
       <span class="count" id="count"></span>
     </div>
     <p class="crumb" id="crumb"></p>
@@ -116,13 +120,16 @@
 </main>
 
 <script>
-const state = { groups: [], active: null, activeLabel: "", papers: [], q: "", sort: "year" };
+const state = { groups: [], active: null, activeLabel: "", papers: [], q: "", sort: "year", cacheBust: "" };
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
+// 갱신 시 캐시 우회용. 평소엔 "" 라 일반 캐시 사용.
+const u = p => p + (state.cacheBust || "");
+const noStore = () => state.cacheBust ? { cache: "no-store" } : {};
 
 async function boot() {
   let idx;
   try {
-    idx = await (await fetch("data/index.json")).json();
+    idx = await (await fetch(u("data/index.json"), noStore())).json();
   } catch {
     document.getElementById("list").innerHTML =
       `<p class="empty">데이터가 아직 없습니다. <code>python -m src.pipeline backfill</code> 을 실행하면 이 자리에 논문이 채워집니다.</p>`;
@@ -158,8 +165,37 @@ async function select(group, sc) {
   state.active = sc.id;
   state.activeLabel = `${group.nameKo} · ${sc.nameKo}`;
   drawRail();
-  state.papers = await (await fetch(`data/${sc.id}.json`)).json();
+  state.papers = await (await fetch(u(`data/${sc.id}.json`), noStore())).json();
   render();
+}
+
+async function refresh() {
+  const btn = document.getElementById("refresh");
+  btn.disabled = true; btn.textContent = "갱신 중…";
+  state.cacheBust = "?t=" + Date.now();   // 저장소의 최신 데이터를 캐시 무시하고 다시 불러옴
+  try {
+    const idx = await (await fetch(u("data/index.json"), noStore())).json();
+    state.groups = idx.groups;
+    document.getElementById("stamp").textContent =
+      `총 ${idx.total ?? 0}편\n갱신 ${new Date(idx.updatedAt).toLocaleString("ko-KR")}`;
+    // 현재 보던 분류를 유지(사라졌으면 비어있지 않은 첫 분류)
+    let sel = null;
+    for (const g of state.groups) {
+      const sc = g.subcategories.find(s => s.id === state.active);
+      if (sc) { sel = { g, sc }; break; }
+    }
+    if (!sel) {
+      const flat = state.groups.flatMap(g => g.subcategories.map(sc => ({ g, sc })));
+      sel = flat.find(x => x.sc.count > 0) || flat[0];
+    }
+    drawRail();
+    if (sel) await select(sel.g, sel.sc);
+    btn.textContent = "갱신됨 ✓";
+  } catch {
+    btn.textContent = "갱신 실패";
+  }
+  state.cacheBust = "";
+  setTimeout(() => { btn.textContent = "↻ 갱신"; btn.disabled = false; }, 1600);
 }
 
 function render() {
@@ -168,7 +204,6 @@ function render() {
     (p.title + " " + (p.journal || "") + " " + (p.authors || []).join(" ")).toLowerCase().includes(q));
   const sorters = {
     journal: (a, b) => (a.journal || "").localeCompare(b.journal || "") || (b.year ?? 0) - (a.year ?? 0),
-    cited: (a, b) => (b.citations ?? -1) - (a.citations ?? -1) || (b.year ?? 0) - (a.year ?? 0),
     year: (a, b) => (b.year ?? 0) - (a.year ?? 0),
   };
   rows.sort(sorters[state.sort] || sorters.year);
@@ -185,7 +220,6 @@ function card(p) {
   return `<article class="item">
     <div class="side">
       <span class="yr">${p.year ?? "—"}</span>
-      ${p.citations != null ? `<span class="cite">피인용 ${p.citations}</span>` : ""}
       <span>PMID ${p.pmid}</span>
     </div>
     <div>
@@ -279,6 +313,7 @@ listEl.addEventListener("click", e => {
 
 document.getElementById("q").oninput = e => { state.q = e.target.value; render(); };
 document.getElementById("sort").onchange = e => { state.sort = e.target.value; render(); };
+document.getElementById("refresh").onclick = refresh;
 boot();
 </script>
 </body>

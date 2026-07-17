@@ -22,21 +22,24 @@ topic_filter: >-
       OR "knee arthroplasty"[tiab] OR "knee replacement"[tiab] OR arthroplasty[tiab]
    OR dysphagia[tiab] OR deglutition[tiab] OR swallowing[tiab])
 
-# export 단계 키워드 필터.
-# 제목 또는 MeSH 용어에 아래 중 하나라도 포함돼야 사이트에 노출된다
-# (대소문자 무시, 부분일치). 수집(backfill)과 무관하게 export만 다시 돌리면 적용됨.
-# 항목을 추가/삭제한 뒤  python -m src.pipeline export  로 즉시 반영.
+# export 단계 키워드 필터 (제목 또는 MeSH 용어 기준, 대소문자 무시·부분일치).
+#   require_all: 전부 포함돼야 함 (rehabilitation 필수)
+#   require_any: 하나 이상 포함돼야 함 (질환 키워드)
+# 즉 'rehabilitation' + (아래 질환 중 하나) 를 모두 만족해야 노출된다.
+# 수집(backfill)과 무관하게  python -m src.pipeline export  만 다시 돌리면 즉시 반영.
 keyword_filter:
-  - stroke
-  - traumatic brain inj        # traumatic brain injury / injuries
-  - brain injuries, traumatic  # MeSH 표기(Brain Injuries, Traumatic)
-  - spinal cord inj            # spinal cord injury / injuries
-  - parkinson
-  - dementia
-  - dysphagia
-  - deglutition                # 연하장애 MeSH(Deglutition Disorders)
-  - arthroplasty
-  - rehabilitation
+  require_all:
+    - rehabilitation
+  require_any:
+    - stroke
+    - traumatic brain inj        # traumatic brain injury / injuries
+    - brain injuries, traumatic  # MeSH 표기(Brain Injuries, Traumatic)
+    - spinal cord inj            # spinal cord injury / injuries
+    - parkinson
+    - dementia
+    - dysphagia
+    - deglutition                # 연하장애 MeSH(Deglutition Disorders)
+    - arthroplasty
 
 groups:
   - id: neurology

@@ -2,7 +2,6 @@
 
   python -m src.pipeline backfill         # 2010년 이후 연 단위로 전체 최초 수집
   python -m src.pipeline daily            # 마지막 실행 이후 신규만
-  python -m src.pipeline citations        # 피인용수(iCite) 갱신
   python -m src.pipeline export           # DB -> 프론트용 JSON
   python -m src.pipeline verify-journals  # 저널 약어별 PubMed 건수 확인(수집 안 함)
 
@@ -32,7 +31,7 @@ def load_config():
     with open(ROOT / "config/categories.yaml", encoding="utf-8") as f:
         cats = yaml.safe_load(f)
     return (settings, cats["groups"], cats.get("topic_filter", ""),
-            cats.get("keyword_filter", []))
+            cats.get("keyword_filter", {}))
 
 
 def _norm(s: str) -> str:
@@ -136,25 +135,6 @@ def run(mode: str):
     conn.close()
 
 
-def citations():
-    """수집된 모든 논문의 총 피인용수를 iCite에서 조회해 갱신한다."""
-    from . import icite
-    settings, _groups, _tf, _kw = load_config()
-    conn = db.connect(str(ROOT / settings["storage"]["db_path"]))
-    pmids = [r["pmid"] for r in conn.execute("SELECT pmid FROM papers")]
-    log.info("[citations] %d편 피인용수 조회(iCite)", len(pmids))
-    counts = icite.fetch_citations(
-        pmids, progress=lambda done, tot: log.info("[citations]   %d/%d", done, tot))
-    got = 0
-    for pmid, c in counts.items():
-        conn.execute("UPDATE papers SET citation_count=? WHERE pmid=?", (c, pmid))
-        if c is not None:
-            got += 1
-    conn.commit()
-    log.info("[citations] 완료: %d편 피인용수 확보", got)
-    conn.close()
-
-
 def verify_journals():
     """저널 약어([ta])별 PubMed 건수를 출력. 약어 오타(건수 0)를 잡기 위함."""
     settings, groups, _, _ = load_config()
@@ -172,12 +152,15 @@ def verify_journals():
             print(f"  {n:7d}  {j['ta']:34s} {j['name']}{flag}")
 
 
-def _keyword_match(title: str, mesh_json: str, keywords: list) -> bool:
-    """제목 또는 MeSH 용어에 키워드가 하나라도 포함되면 True(대소문자 무시, 부분일치)."""
-    if not keywords:
-        return True
+def _keyword_match(title: str, mesh_json: str, require_all: list, require_any: list) -> bool:
+    """제목 또는 MeSH 용어 기준(대소문자 무시, 부분일치):
+    require_all 은 전부 포함돼야 하고, require_any 는 하나 이상 포함돼야 True."""
     hay = (title or "").lower() + " " + " ".join(json.loads(mesh_json or "[]")).lower()
-    return any(k in hay for k in keywords)
+    if not all(k in hay for k in require_all):
+        return False
+    if require_any and not any(k in hay for k in require_any):
+        return False
+    return True
 
 
 def export():
@@ -185,7 +168,10 @@ def export():
     conn = db.connect(str(ROOT / settings["storage"]["db_path"]))
     out_dir = ROOT / settings["storage"]["export_dir"]
     out_dir.mkdir(parents=True, exist_ok=True)
-    keywords = [k.lower() for k in (keyword_filter or [])]
+    kf = keyword_filter or {}
+    require_all = [k.lower() for k in kf.get("require_all", [])]
+    require_any = [k.lower() for k in kf.get("require_any", [])]
+    has_filter = bool(require_all or require_any)
 
     index_groups = []
     total = 0
@@ -198,7 +184,8 @@ def export():
                 "WHERE c.category_id=? ORDER BY p.pub_year DESC, p.pmid DESC",
                 (sc["id"],),
             ).fetchall()
-            kept = [r for r in rows if _keyword_match(r["title"], r["mesh_terms"], keywords)]
+            kept = [r for r in rows
+                    if _keyword_match(r["title"], r["mesh_terms"], require_all, require_any)]
             dropped += len(rows) - len(kept)
             rows = kept
             papers = [{
@@ -206,7 +193,6 @@ def export():
                 "abstract": r["abstract"], "journal": r["journal"], "year": r["pub_year"],
                 "authors": json.loads(r["authors"] or "[]"),
                 "pubTypes": json.loads(r["pub_types"] or "[]"),
-                "citations": r["citation_count"],
                 "summary": json.loads(r["summary"]) if r["summary"] else None,
             } for r in rows]
             (out_dir / f"{sc['id']}.json").write_text(
@@ -221,8 +207,8 @@ def export():
         "total": total,
         "updatedAt": datetime.now(timezone.utc).isoformat(),
     }, ensure_ascii=False), encoding="utf-8")
-    if keywords:
-        log.info("키워드 필터로 %d편 제외(제목·MeSH 미포함)", dropped)
+    if has_filter:
+        log.info("키워드 필터로 %d편 제외(제목·MeSH 조건 미충족)", dropped)
     log.info("export 완료 → %s (총 %d편)", out_dir, total)
     conn.close()
 
@@ -230,16 +216,12 @@ def export():
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["backfill", "daily", "citations",
-                                     "export", "verify-journals"])
+    ap.add_argument("mode", choices=["backfill", "daily", "export", "verify-journals"])
     args = ap.parse_args()
     if args.mode == "export":
         export()
     elif args.mode == "verify-journals":
         verify_journals()
-    elif args.mode == "citations":
-        citations()
-        export()
     else:
         run(args.mode)
         export()

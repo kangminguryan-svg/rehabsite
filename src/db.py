@@ -17,7 +17,6 @@ CREATE TABLE IF NOT EXISTS papers (
     mesh_terms     TEXT,          -- JSON 배열
     metric_value   REAL,          -- IF 프록시 (OpenAlex 2yr mean citedness)
     metric_source  TEXT,
-    citation_count INTEGER,       -- 총 피인용수 (NIH iCite)
     passed_filter  INTEGER DEFAULT 0,   -- 0=탈락, 1=통과, 2=지표불명(flag)
     summary        TEXT,          -- Fable 산출물 (nullable)
     tags           TEXT,          -- Fable 산출물, JSON 배열
@@ -59,16 +58,7 @@ def connect(db_path: str) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
-    _migrate(conn)
     return conn
-
-
-def _migrate(conn) -> None:
-    """기존 DB에 없는 컬럼을 추가(재수집 없이 스키마 확장)."""
-    cols = {r[1] for r in conn.execute("PRAGMA table_info(papers)")}
-    if "citation_count" not in cols:
-        conn.execute("ALTER TABLE papers ADD COLUMN citation_count INTEGER")
-        conn.commit()
 
 
 def upsert_paper(conn, rec: dict) -> None:
