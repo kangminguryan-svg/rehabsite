@@ -39,8 +39,12 @@ python -m src.pipeline daily             # 이후 증분
 python -m src.pipeline citations         # 피인용수(NIH iCite) 조회·갱신
 python -m src.pipeline export            # DB → web/data/*.json
 
-cd web && python -m http.server 8000     # http://localhost:8000
+python serve.py                          # http://localhost:8000 (권장)
+# 또는 정적 서빙만:  cd web && python -m http.server 8000
 ```
+
+`serve.py` 는 사이트를 서빙하면서 "↻ 갱신" 버튼의 신규 논문 수집 요청을 처리한다
+(아래 "데이터 갱신" 참고). `NCBI_API_KEY` 를 설정한 셸에서 실행하면 수집에도 그 키가 쓰인다.
 
 윈도우 PowerShell에서는 `export NCBI_API_KEY=...` 대신 `$env:NCBI_API_KEY="..."`.
 
@@ -60,8 +64,12 @@ AND로 적용된다. 예: `[Randomized Controlled Trial, Meta-Analysis, Systemat
 프론트엔드에서 "초록 보기"를 열면 Google 번역(무키)으로 한글 번역을 표시하고 원문 탭으로
 전환할 수 있다. 번역 결과는 브라우저에 캐시된다. 실패 시 원문과 외부 번역 링크로 폴백한다.
 
-툴바의 "↻ 갱신" 버튼은 저장소의 최신 `web/data` 를 캐시 무시하고 다시 불러온다
-(페이지 새로고침 없이, 보던 분류 유지). 논문 수집 자체는 파이프라인/일일 워크플로가 한다.
+툴바의 "↻ 갱신" 버튼:
+- **`serve.py` 로 띄운 경우**: 버튼이 `POST /api/refresh` 를 호출해 백그라운드로
+  `python -m src.pipeline daily`(신규 논문 수집)를 실행하고, 진행 상황을 상태줄에
+  보여준 뒤 완료되면 최신 데이터를 자동으로 다시 불러온다.
+- **정적 서빙(`http.server` 등)인 경우**: 수집 API가 없으므로, 저장소의 최신
+  `web/data` 를 캐시 무시하고 다시 불러오기만 한다(페이지 새로고침 없이, 보던 분류 유지).
 
 ## Fable 켜기
 

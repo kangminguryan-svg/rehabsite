@@ -53,6 +53,8 @@
   .refresh:hover:not(:disabled){border-color:var(--signal)}
   .refresh:disabled{color:var(--muted);cursor:default}
   .refresh:focus-visible{outline:2px solid var(--signal);outline-offset:1px}
+  .refresh-status{font:400 11px var(--mono);color:var(--muted);max-width:38ch;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .count{font:400 11px var(--mono);color:var(--muted);margin-left:auto}
   .crumb{font:400 12px var(--mono);color:var(--muted);margin-bottom:18px}
   .crumb b{color:var(--ink);font-weight:500}
@@ -113,7 +115,8 @@
         <option value="cited">피인용순</option>
         <option value="journal">저널순</option>
       </select>
-      <button id="refresh" class="refresh" type="button" title="최신 데이터로 갱신">↻ 갱신</button>
+      <button id="refresh" class="refresh" type="button" title="신규 논문 수집 후 갱신">↻ 갱신</button>
+      <span class="refresh-status" id="refreshStatus"></span>
       <span class="count" id="count"></span>
     </div>
     <p class="crumb" id="crumb"></p>
@@ -171,16 +174,14 @@ async function select(group, sc) {
   render();
 }
 
-async function refresh() {
-  const btn = document.getElementById("refresh");
-  btn.disabled = true; btn.textContent = "갱신 중…";
-  state.cacheBust = "?t=" + Date.now();   // 저장소의 최신 데이터를 캐시 무시하고 다시 불러옴
+// 저장소의 최신 web/data 를 캐시 무시하고 다시 불러와 화면 반영(보던 분류 유지).
+async function reloadData() {
+  state.cacheBust = "?t=" + Date.now();
   try {
     const idx = await (await fetch(u("data/index.json"), noStore())).json();
     state.groups = idx.groups;
     document.getElementById("stamp").textContent =
       `총 ${idx.total ?? 0}편\n갱신 ${new Date(idx.updatedAt).toLocaleString("ko-KR")}`;
-    // 현재 보던 분류를 유지(사라졌으면 비어있지 않은 첫 분류)
     let sel = null;
     for (const g of state.groups) {
       const sc = g.subcategories.find(s => s.id === state.active);
@@ -192,12 +193,43 @@ async function refresh() {
     }
     drawRail();
     if (sel) await select(sel.g, sel.sc);
-    btn.textContent = "갱신됨 ✓";
-  } catch {
-    btn.textContent = "갱신 실패";
+  } finally {
+    state.cacheBust = "";
   }
-  state.cacheBust = "";
-  setTimeout(() => { btn.textContent = "↻ 갱신"; btn.disabled = false; }, 1600);
+}
+
+async function refresh() {
+  const btn = document.getElementById("refresh");
+  const status = document.getElementById("refreshStatus");
+  btn.disabled = true; btn.textContent = "요청 중…"; status.textContent = "";
+
+  // 1) 로컬 서버(serve.py)에 신규 논문 수집 트리거를 시도한다.
+  let triggered = false;
+  try {
+    const r = await fetch("api/refresh", { method: "POST" });
+    if (r.ok) triggered = true;
+  } catch { /* 정적 호스팅 등 API 없음 → 데이터 다시 읽기만 */ }
+
+  // 2) 트리거됐으면 완료까지 상태를 폴링한다(수집은 수 분 걸릴 수 있음).
+  if (triggered) {
+    btn.textContent = "수집 중…";
+    for (let i = 0; i < 900; i++) {                 // 최대 ~30분
+      await new Promise(r => setTimeout(r, 2000));
+      let s;
+      try { s = await (await fetch("api/status", { cache: "no-store" })).json(); }
+      catch { break; }
+      status.textContent = (s.tail || []).slice(-1)[0] || "";
+      if (s.done) { if (!s.ok) status.textContent = "수집 오류 — 서버 콘솔 확인"; break; }
+    }
+  }
+
+  // 3) 최신 데이터 반영
+  await reloadData();
+  btn.textContent = triggered ? "완료 ✓" : "갱신됨 ✓";
+  setTimeout(() => {
+    btn.textContent = "↻ 갱신"; btn.disabled = false;
+    if (status.textContent.startsWith("수집 오류") === false) status.textContent = "";
+  }, 2200);
 }
 
 function render() {
