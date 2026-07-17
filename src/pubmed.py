@@ -1,4 +1,5 @@
 """PubMed E-utilities 클라이언트. esearch로 PMID를 모으고 efetch로 상세를 가져온다."""
+import logging
 import os
 import time
 import xml.etree.ElementTree as ET
@@ -7,6 +8,7 @@ from typing import Iterator
 import requests
 
 BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+log = logging.getLogger("pubmed")
 
 
 class PubMed:
@@ -15,21 +17,36 @@ class PubMed:
         self.common = {"tool": tool, "email": email, "db": "pubmed"}
         if self.api_key:
             self.common["api_key"] = self.api_key
+        else:
+            log.warning("NCBI_API_KEY 미설정 — 느린 공용 풀 사용(500/429 잦음). "
+                        "발급 후 환경변수 설정 권장.")
         # API key 있으면 10 req/s, 없으면 3 req/s
         self.delay = 0.11 if self.api_key else 0.35
         self.session = requests.Session()
 
     def _get(self, endpoint: str, params: dict) -> requests.Response:
-        for attempt in range(4):
-            r = self.session.get(f"{BASE}/{endpoint}", params={**self.common, **params}, timeout=60)
+        # NCBI는 일시적 500/429가 잦다. 네트워크 오류·5xx·429를 지수 백오프로 재시도.
+        last = None
+        for attempt in range(6):
+            try:
+                r = self.session.get(f"{BASE}/{endpoint}",
+                                     params={**self.common, **params}, timeout=60)
+            except requests.RequestException as e:
+                last = e
+                time.sleep(min(2 ** attempt, 30))
+                continue
             if r.status_code == 429 or r.status_code >= 500:
-                time.sleep(2 ** attempt)
+                last = r
+                time.sleep(min(2 ** attempt, 30))
                 continue
             r.raise_for_status()
             time.sleep(self.delay)
             return r
-        r.raise_for_status()
-        return r
+        # 재시도 소진: 마지막이 예외면 그대로, 응답이면 상태코드로 raise
+        if isinstance(last, Exception):
+            raise last
+        last.raise_for_status()
+        return last
 
     def search(self, query: str, retmax: int = 9999, mindate: str = None,
                maxdate: str = None, datetype: str = "edat") -> list[str]:
@@ -51,11 +68,16 @@ class PubMed:
         return int(el.text) if el is not None and el.text else 0
 
     def fetch(self, pmids: list[str], batch: int = 200) -> Iterator[dict]:
-        """PMID 목록의 상세 레코드를 배치로 yield."""
+        """PMID 목록의 상세 레코드를 배치로 yield.
+        한 배치가 실패해도 전체를 중단하지 않고 건너뛴다."""
         for i in range(0, len(pmids), batch):
             chunk = pmids[i:i + batch]
-            r = self._get("efetch.fcgi", {"id": ",".join(chunk), "retmode": "xml"})
-            root = ET.fromstring(r.content)
+            try:
+                r = self._get("efetch.fcgi", {"id": ",".join(chunk), "retmode": "xml"})
+                root = ET.fromstring(r.content)
+            except (requests.RequestException, ET.ParseError) as e:
+                log.warning("efetch 배치 %d건 실패(건너뜀): %s", len(chunk), e)
+                continue
             for art in root.findall(".//PubmedArticle"):
                 rec = _parse_article(art)
                 if rec:

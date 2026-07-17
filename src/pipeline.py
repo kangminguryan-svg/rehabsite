@@ -15,6 +15,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import requests
 import yaml
 
 from . import db
@@ -84,12 +85,21 @@ def run(mode: str):
             cursor = db.get_cursor(conn, sc["id"]) or \
                 (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y/%m/%d")
             query = build_query(sc, topic_filter, settings)
-            pmids = pm.search(query, retmax, mindate=cursor, datetype="edat")
+            try:
+                pmids = pm.search(query, retmax, mindate=cursor, datetype="edat")
+            except requests.RequestException as e:
+                log.warning("[daily] %s 조회 실패(건너뜀): %s", sc["id"], e)
+                continue
         else:
             # backfill: 연 단위로 나눠 esearch 1만 상한을 회피.
+            # 한 연도가 실패해도 그 해만 건너뛰고 계속(전체 중단 방지).
             seen = set()
             for yr in range(min_year, this_year + 1):
-                ids = pm.search(build_query(sc, topic_filter, settings, year=yr), retmax)
+                try:
+                    ids = pm.search(build_query(sc, topic_filter, settings, year=yr), retmax)
+                except requests.RequestException as e:
+                    log.warning("[backfill] %s %d년 조회 실패(건너뜀): %s", sc["id"], yr, e)
+                    continue
                 seen.update(ids)
                 if len(ids) >= retmax:
                     log.warning("[backfill] %s %d년이 상한(%d) 도달 — 월 단위 분할 필요",
