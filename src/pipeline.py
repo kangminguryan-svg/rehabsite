@@ -30,7 +30,8 @@ def load_config():
         settings = yaml.safe_load(f)
     with open(ROOT / "config/categories.yaml", encoding="utf-8") as f:
         cats = yaml.safe_load(f)
-    return settings, cats["groups"], cats.get("topic_filter", "")
+    return (settings, cats["groups"], cats.get("topic_filter", ""),
+            cats.get("keyword_filter", []))
 
 
 def _norm(s: str) -> str:
@@ -69,7 +70,7 @@ def build_query(sc: dict, topic_filter: str, settings: dict, year: int = None) -
 
 
 def run(mode: str):
-    settings, groups, topic_filter = load_config()
+    settings, groups, topic_filter, _ = load_config()
     conn = db.connect(str(ROOT / settings["storage"]["db_path"]))
     pm = PubMed(settings["pubmed"]["tool"], settings["pubmed"]["email"],
                 settings["pubmed"]["api_key_env"])
@@ -136,7 +137,7 @@ def run(mode: str):
 
 def verify_journals():
     """저널 약어([ta])별 PubMed 건수를 출력. 약어 오타(건수 0)를 잡기 위함."""
-    settings, groups, _ = load_config()
+    settings, groups, _, _ = load_config()
     pm = PubMed(settings["pubmed"]["tool"], settings["pubmed"]["email"],
                 settings["pubmed"]["api_key_env"])
     min_year = settings["pubmed"]["min_year"]
@@ -151,14 +152,24 @@ def verify_journals():
             print(f"  {n:7d}  {j['ta']:34s} {j['name']}{flag}")
 
 
+def _keyword_match(title: str, mesh_json: str, keywords: list) -> bool:
+    """제목 또는 MeSH 용어에 키워드가 하나라도 포함되면 True(대소문자 무시, 부분일치)."""
+    if not keywords:
+        return True
+    hay = (title or "").lower() + " " + " ".join(json.loads(mesh_json or "[]")).lower()
+    return any(k in hay for k in keywords)
+
+
 def export():
-    settings, groups, _ = load_config()
+    settings, groups, _, keyword_filter = load_config()
     conn = db.connect(str(ROOT / settings["storage"]["db_path"]))
     out_dir = ROOT / settings["storage"]["export_dir"]
     out_dir.mkdir(parents=True, exist_ok=True)
+    keywords = [k.lower() for k in (keyword_filter or [])]
 
     index_groups = []
     total = 0
+    dropped = 0
     for g in groups:
         subs = []
         for sc in g["subcategories"]:
@@ -167,6 +178,9 @@ def export():
                 "WHERE c.category_id=? ORDER BY p.pub_year DESC, p.pmid DESC",
                 (sc["id"],),
             ).fetchall()
+            kept = [r for r in rows if _keyword_match(r["title"], r["mesh_terms"], keywords)]
+            dropped += len(rows) - len(kept)
+            rows = kept
             papers = [{
                 "pmid": r["pmid"], "doi": r["doi"], "title": r["title"],
                 "abstract": r["abstract"], "journal": r["journal"], "year": r["pub_year"],
@@ -186,6 +200,8 @@ def export():
         "total": total,
         "updatedAt": datetime.now(timezone.utc).isoformat(),
     }, ensure_ascii=False), encoding="utf-8")
+    if keywords:
+        log.info("키워드 필터로 %d편 제외(제목·MeSH 미포함)", dropped)
     log.info("export 완료 → %s (총 %d편)", out_dir, total)
     conn.close()
 
