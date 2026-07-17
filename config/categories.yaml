@@ -1,51 +1,135 @@
-# 카테고리별 PubMed 검색식.
-# 이 파일이 사이트 품질을 좌우함. 실제 PubMed에서 직접 돌려보고 튜닝할 것.
-# 공통 필터(연도, 언어 등)는 settings.yaml 에서 자동으로 AND 결합됨.
+# 저널 큐레이션 기반 카테고리.
+# 두 대분류(신경학·재활의학) 아래 하위 분류를 두고, 각 하위 분류는
+# PubMed 저널 약어(NLM title abbreviation) 목록으로 정의한다.
+#
+# topic_filter: true 인 하위 분류는 아래 공통 주제 필터를 AND로 걸어
+#   대형 종합지(Neurology, Brain 등)나 광범위 저널(물리치료·정형)에서
+#   사이트가 다루는 재활 관련 주제만 추린다.
+# topic_filter: false 는 저널 자체가 곧 주제인 전문지 → 전체 게재분 수집.
+#
+# 저널 약어가 맞는지는  python -m src.pipeline verify-journals  로 건수 확인 가능.
 
-categories:
-  - id: stroke
-    name_ko: 뇌졸중 후 재활
-    name_en: Stroke rehabilitation
-    query: >-
-      ("Stroke Rehabilitation"[Mesh]
-       OR (("Stroke"[Mesh] OR stroke[tiab] OR "cerebral infarction"[tiab]
-            OR "intracerebral hemorrhage"[tiab] OR hemiplegia[tiab] OR hemiparesis[tiab])
-           AND (rehabilitation[tiab] OR "physical therapy"[tiab] OR "occupational therapy"[tiab]
-                OR recovery[tiab] OR "motor recovery"[tiab] OR rehabilitation[sh])))
+# 사이트가 다루는 재활/신경 회복 도메인. topic_filter:true 하위 분류에만 적용.
+topic_filter: >-
+  ("Rehabilitation"[Mesh] OR rehabilitation[tiab] OR rehabilitation[sh]
+   OR "physical therapy"[tiab] OR physiotherapy[tiab] OR "occupational therapy"[tiab]
+   OR "motor recovery"[tiab] OR "functional recovery"[tiab] OR "gait training"[tiab]
+   OR stroke[tiab] OR "cerebral infarction"[tiab] OR "intracerebral hemorrhage"[tiab]
+      OR hemiplegia[tiab] OR hemiparesis[tiab] OR "Stroke Rehabilitation"[Mesh]
+   OR "traumatic brain injury"[tiab] OR TBI[tiab] OR "brain injury"[tiab] OR concussion[tiab]
+   OR "spinal cord injury"[tiab] OR paraplegia[tiab] OR tetraplegia[tiab] OR quadriplegia[tiab]
+   OR "hip fracture"[tiab] OR "hip arthroplasty"[tiab] OR "hip replacement"[tiab]
+      OR "knee arthroplasty"[tiab] OR "knee replacement"[tiab] OR arthroplasty[tiab]
+   OR dysphagia[tiab] OR deglutition[tiab] OR swallowing[tiab])
 
-  - id: tbi
-    name_ko: 외상성 뇌손상 후 재활
-    name_en: TBI rehabilitation
-    query: >-
-      (("Brain Injuries, Traumatic"[Mesh] OR "traumatic brain injury"[tiab] OR TBI[tiab]
-        OR "head injury"[tiab] OR concussion[tiab])
-       AND (rehabilitation[tiab] OR "cognitive rehabilitation"[tiab] OR "physical therapy"[tiab]
-            OR recovery[tiab] OR rehabilitation[sh]))
+groups:
+  - id: neurology
+    name_ko: 신경학
+    subcategories:
+      - id: neuro-general
+        name_ko: 최상위 종합
+        name_en: Top general neurology
+        topic_filter: true          # 종합 신경학지 → 재활 주제만
+        journals:
+          - {name: The Lancet Neurology, ta: Lancet Neurol}
+          - {name: JAMA Neurology, ta: JAMA Neurol}
+          - {name: Neurology, ta: Neurology}
+          - {name: Annals of Neurology, ta: Ann Neurol}
+          - {name: Brain, ta: Brain}
+          - {name: J Neurology Neurosurgery Psychiatry, ta: J Neurol Neurosurg Psychiatry}
 
-  - id: sci
-    name_ko: 척수손상 후 재활
-    name_en: SCI rehabilitation
-    query: >-
-      (("Spinal Cord Injuries"[Mesh] OR "spinal cord injury"[tiab] OR paraplegia[tiab]
-        OR tetraplegia[tiab] OR quadriplegia[tiab])
-       AND (rehabilitation[tiab] OR "gait training"[tiab] OR exoskeleton[tiab]
-            OR "functional electrical stimulation"[tiab] OR recovery[tiab] OR rehabilitation[sh]))
+      - id: neuro-stroke
+        name_ko: 뇌졸중 특화
+        name_en: Stroke
+        topic_filter: false
+        journals:
+          - {name: Stroke, ta: Stroke}
+          - {name: International Journal of Stroke, ta: Int J Stroke}
+          - {name: European Stroke Journal, ta: Eur Stroke J}
+          - {name: Journal of Stroke, ta: J Stroke}
+          - {name: J NeuroInterventional Surgery, ta: J Neurointerv Surg}
+          - {name: Neurocritical Care, ta: Neurocrit Care}
 
-  - id: hip
-    name_ko: 고관절 골절 및 치환술 후 재활
-    name_en: Hip fracture / arthroplasty rehabilitation
-    query: >-
-      (("Hip Fractures"[Mesh] OR "Arthroplasty, Replacement, Hip"[Mesh]
-        OR "hip fracture"[tiab] OR "femoral neck fracture"[tiab] OR "hip replacement"[tiab]
-        OR "hip arthroplasty"[tiab] OR "THA"[tiab])
-       AND (rehabilitation[tiab] OR "physical therapy"[tiab] OR "postoperative care"[tiab]
-            OR mobilization[tiab] OR recovery[tiab] OR rehabilitation[sh]))
+      - id: neuro-tbi
+        name_ko: 외상성 뇌손상
+        name_en: TBI
+        topic_filter: false
+        journals:
+          - {name: Brain Injury, ta: Brain Inj}
+          - {name: Journal of Neurotrauma, ta: J Neurotrauma}
 
-  - id: knee
-    name_ko: 슬관절 치환술 후 재활
-    name_en: Knee arthroplasty rehabilitation
-    query: >-
-      (("Arthroplasty, Replacement, Knee"[Mesh]
-        OR "knee replacement"[tiab] OR "knee arthroplasty"[tiab] OR "TKA"[tiab] OR "TKR"[tiab])
-       AND (rehabilitation[tiab] OR "physical therapy"[tiab] OR "postoperative care"[tiab]
-            OR "range of motion"[tiab] OR recovery[tiab] OR rehabilitation[sh]))
+      - id: neuro-review
+        name_ko: 리뷰
+        name_en: Reviews
+        topic_filter: true          # 전 질환 리뷰지 → 재활 주제만
+        journals:
+          - {name: Nature Reviews Neurology, ta: Nat Rev Neurol}
+          - {name: Nature Reviews Disease Primers, ta: Nat Rev Dis Primers}
+
+  - id: rehab
+    name_ko: 재활의학
+    subcategories:
+      - id: rehab-general
+        name_ko: 종합
+        name_en: General rehabilitation
+        topic_filter: false
+        journals:
+          - {name: Archives of Physical Medicine and Rehabilitation, ta: Arch Phys Med Rehabil}
+          - {name: Clinical Rehabilitation, ta: Clin Rehabil}
+          - {name: Journal of NeuroEngineering and Rehabilitation, ta: J Neuroeng Rehabil}
+          - {name: Annals of Physical and Rehabilitation Medicine, ta: Ann Phys Rehabil Med}
+          - {name: American Journal of Physical Medicine and Rehabilitation, ta: Am J Phys Med Rehabil}
+          - {name: Journal of Rehabilitation Medicine, ta: J Rehabil Med}
+
+      - id: rehab-stroke
+        name_ko: 뇌졸중
+        name_en: Stroke rehabilitation
+        topic_filter: false
+        journals:
+          - {name: Neurorehabilitation and Neural Repair, ta: Neurorehabil Neural Repair}
+          - {name: Stroke, ta: Stroke}
+          - {name: International Journal of Stroke, ta: Int J Stroke}
+          - {name: Journal of Stroke, ta: J Stroke}
+
+      - id: rehab-tbi
+        name_ko: 외상성 뇌손상
+        name_en: TBI rehabilitation
+        topic_filter: false
+        journals:
+          - {name: Journal of Head Trauma Rehabilitation, ta: J Head Trauma Rehabil}
+          - {name: Brain Injury, ta: Brain Inj}
+
+      - id: rehab-sci
+        name_ko: 척수손상
+        name_en: SCI rehabilitation
+        topic_filter: false
+        journals:
+          - {name: Spinal Cord, ta: Spinal Cord}
+          - {name: Journal of Spinal Cord Medicine, ta: J Spinal Cord Med}
+          - {name: Topics in Spinal Cord Injury Rehabilitation, ta: Top Spinal Cord Inj Rehabil}
+
+      - id: rehab-dysphagia
+        name_ko: 연하장애
+        name_en: Dysphagia
+        topic_filter: false
+        journals:
+          - {name: Dysphagia, ta: Dysphagia}
+
+      - id: rehab-ortho
+        name_ko: 고관절·슬관절
+        name_en: Hip / knee
+        topic_filter: true          # 광범위 정형지 → 고관절·슬관절 주제만
+        journals:
+          - {name: J Orthopaedic and Sports Physical Therapy, ta: J Orthop Sports Phys Ther}
+          - {name: Osteoporosis International, ta: Osteoporos Int}
+          - {name: Journal of Arthroplasty, ta: J Arthroplasty}
+          - {name: Bone and Joint Journal, ta: Bone Joint J}
+
+      - id: rehab-pt
+        name_ko: 물리치료
+        name_en: Physiotherapy
+        topic_filter: true          # 광범위 물리치료지 → 재활 도메인만
+        journals:
+          - {name: Physical Therapy, ta: Phys Ther}
+          - {name: Journal of Physiotherapy, ta: J Physiother}
+          - {name: Physiotherapy, ta: Physiotherapy}

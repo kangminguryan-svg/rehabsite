@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>재활의학 논문 인덱스</title>
+<title>재활의학 · 신경학 논문 인덱스</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root{
     --ink:#16202B; --paper:#F7F8F6; --card:#FFFFFF;
-    --signal:#0E7C6B; --muted:#6B7683; --rule:#DDE1DD; --flag:#B4741C;
+    --signal:#0E7C6B; --muted:#6B7683; --rule:#DDE1DD;
     --serif:"Newsreader",Georgia,serif;
     --sans:"IBM Plex Sans",system-ui,sans-serif;
     --mono:"IBM Plex Mono",ui-monospace,monospace;
@@ -23,45 +23,44 @@
   .masthead{border-bottom:1px solid var(--rule);padding:28px 24px 20px;
             display:flex;justify-content:space-between;align-items:baseline;gap:16px;flex-wrap:wrap}
   .masthead h1{font:500 26px/1.1 var(--serif);letter-spacing:-.01em}
-  .masthead p{color:var(--muted);font-size:13px;margin-top:6px;max-width:52ch}
+  .masthead p{color:var(--muted);font-size:13px;margin-top:6px;max-width:56ch}
   .stamp{font:400 11px/1.5 var(--mono);color:var(--muted);text-align:right;white-space:nowrap}
 
-  .shell{display:grid;grid-template-columns:220px 1fr;gap:36px;
+  .shell{display:grid;grid-template-columns:240px 1fr;gap:36px;
          max-width:1120px;margin:0 auto;padding:28px 24px 80px}
 
-  /* 카테고리 레일 */
+  /* 2단계 카테고리 레일 */
   .rail{position:sticky;top:24px;align-self:start}
+  .group{margin-bottom:20px}
+  .group > h2{font:500 12px/1 var(--mono);letter-spacing:.04em;text-transform:uppercase;
+    color:var(--muted);padding:0 12px 8px;border-bottom:1px solid var(--rule);margin-bottom:4px}
   .rail button{display:flex;justify-content:space-between;align-items:baseline;gap:8px;
     width:100%;text-align:left;background:none;border:0;border-left:2px solid var(--rule);
-    padding:9px 12px;cursor:pointer;font:400 14px/1.35 var(--sans);color:var(--muted);
+    padding:8px 12px;cursor:pointer;font:400 14px/1.35 var(--sans);color:var(--muted);
     transition:color .15s,border-color .15s}
   .rail button:hover{color:var(--ink)}
   .rail button[aria-current="true"]{color:var(--ink);border-left-color:var(--signal);font-weight:500}
   .rail .n{font:400 11px/1 var(--mono);color:var(--muted)}
   .rail :focus-visible{outline:2px solid var(--signal);outline-offset:2px}
 
-  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap}
+  .toolbar{display:flex;gap:10px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
   .toolbar input,.toolbar select{font:400 13px var(--sans);color:var(--ink);
     background:var(--card);border:1px solid var(--rule);border-radius:3px;padding:7px 10px}
   .toolbar input{flex:1;min-width:180px}
   .toolbar input:focus,.toolbar select:focus{outline:2px solid var(--signal);outline-offset:1px}
   .count{font:400 11px var(--mono);color:var(--muted);margin-left:auto}
+  .crumb{font:400 12px var(--mono);color:var(--muted);margin-bottom:18px}
+  .crumb b{color:var(--ink);font-weight:500}
 
   /* 논문 항목 */
-  .item{display:grid;grid-template-columns:74px 1fr;gap:18px;
+  .item{display:grid;grid-template-columns:88px 1fr;gap:18px;
         padding:20px 0;border-top:1px solid var(--rule)}
-  .gauge{font:400 11px/1.5 var(--mono);color:var(--muted);padding-top:3px}
-  .gauge .yr{color:var(--ink);font-weight:500;display:block;font-size:12px}
-  /* 계측기: 임계값이 33.3% 지점에 오도록 정규화한 지표 막대 */
-  .bar{position:relative;height:3px;background:var(--rule);margin:7px 0 4px;border-radius:2px}
-  .bar i{position:absolute;inset:0 auto 0 0;background:var(--signal);border-radius:2px}
-  .bar::after{content:"";position:absolute;top:-3px;bottom:-3px;left:33.3%;width:1px;background:var(--ink);opacity:.45}
+  .side{font:400 11px/1.5 var(--mono);color:var(--muted);padding-top:3px}
+  .side .yr{color:var(--ink);font-weight:500;display:block;font-size:13px;margin-bottom:3px}
   .item h3{font:400 17px/1.4 var(--serif);letter-spacing:-.005em;margin-bottom:6px}
   .item h3 a:hover{text-decoration:underline;text-decoration-color:var(--signal)}
   .meta{font-size:12.5px;color:var(--muted)}
   .meta em{font-style:italic;color:var(--ink)}
-  .chip{display:inline-block;font:400 10.5px/1 var(--mono);color:var(--flag);
-        border:1px solid currentColor;border-radius:2px;padding:3px 5px;margin-left:6px;vertical-align:1px}
   details{margin-top:10px}
   summary{font:400 12px var(--mono);color:var(--signal);cursor:pointer;width:max-content}
   summary:focus-visible{outline:2px solid var(--signal);outline-offset:2px}
@@ -79,20 +78,21 @@
 
   @media (max-width:760px){
     .shell{grid-template-columns:1fr;gap:20px;padding-top:20px}
-    .rail{position:static;display:flex;gap:4px;overflow-x:auto;padding-bottom:6px}
-    .rail button{border-left:0;border-bottom:2px solid var(--rule);white-space:nowrap;padding:8px 10px}
+    .rail{position:static}
+    .group{margin-bottom:14px}
+    .rail button{border-left:0;border-bottom:1px solid transparent;padding:9px 6px}
     .rail button[aria-current="true"]{border-bottom-color:var(--signal)}
-    .item{grid-template-columns:1fr;gap:8px}
-    .gauge{display:flex;align-items:center;gap:10px}
-    .bar{width:70px;margin:0}
+    .item{grid-template-columns:1fr;gap:6px}
+    .side{display:flex;align-items:baseline;gap:10px}
+    .side .yr{margin-bottom:0}
   }
 </style>
 </head>
 <body>
 <header class="masthead">
   <div>
-    <h1>재활의학 논문 인덱스</h1>
-    <p>2010년 이후 PubMed 수록 논문 중 저널 인용지표가 기준을 넘는 것만 모읍니다. 매일 새벽 5시에 갱신됩니다.</p>
+    <h1>재활의학 · 신경학 논문 인덱스</h1>
+    <p>엄선한 신경학·재활의학 저널의 2010년 이후 논문을 분야별로 모읍니다. 초록은 클릭 시 한글로 번역해 보여줍니다.</p>
   </div>
   <div class="stamp" id="stamp"></div>
 </header>
@@ -104,16 +104,17 @@
       <input id="q" type="search" placeholder="제목 · 저널 · 저자 검색" aria-label="검색">
       <select id="sort" aria-label="정렬">
         <option value="year">최신순</option>
-        <option value="metric">지표순</option>
+        <option value="journal">저널순</option>
       </select>
       <span class="count" id="count"></span>
     </div>
+    <p class="crumb" id="crumb"></p>
     <div id="list"></div>
   </section>
 </main>
 
 <script>
-const state = { cats: [], active: null, papers: [], q: "", sort: "year", threshold: 10 };
+const state = { groups: [], active: null, activeLabel: "", papers: [], q: "", sort: "year" };
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;" }[c]));
 
 async function boot() {
@@ -125,26 +126,37 @@ async function boot() {
       `<p class="empty">데이터가 아직 없습니다. <code>python -m src.pipeline backfill</code> 을 실행하면 이 자리에 논문이 채워집니다.</p>`;
     return;
   }
-  state.cats = idx.categories;
-  state.threshold = idx.metric.threshold ?? state.threshold;
+  state.groups = idx.groups;
   document.getElementById("stamp").textContent =
-    `기준 ${idx.metric.label}\n임계값 ≥ ${idx.metric.threshold}\n갱신 ${new Date(idx.updatedAt).toLocaleString("ko-KR")}`;
+    `총 ${idx.total ?? 0}편\n갱신 ${new Date(idx.updatedAt).toLocaleString("ko-KR")}`;
   drawRail();
-  select(state.cats[0].id);
+  // 첫 번째 비어있지 않은 하위 분류를 기본 선택(없으면 맨 첫 항목)
+  const flat = state.groups.flatMap(g => g.subcategories.map(sc => ({ g, sc })));
+  const first = flat.find(x => x.sc.count > 0) || flat[0];
+  if (first) select(first.g, first.sc);
 }
 
 function drawRail() {
-  document.getElementById("rail").innerHTML = state.cats.map(c =>
-    `<button data-id="${c.id}" aria-current="${c.id === state.active}">
-       <span>${esc(c.nameKo)}</span><span class="n">${c.count}</span></button>`).join("");
+  document.getElementById("rail").innerHTML = state.groups.map(g =>
+    `<div class="group"><h2>${esc(g.nameKo)}</h2>` +
+    g.subcategories.map(sc =>
+      `<button data-id="${sc.id}" aria-current="${sc.id === state.active}">
+         <span>${esc(sc.nameKo)}</span><span class="n">${sc.count}</span></button>`).join("") +
+    `</div>`).join("");
   document.querySelectorAll("#rail button").forEach(b =>
-    b.onclick = () => select(b.dataset.id));
+    b.onclick = () => {
+      for (const g of state.groups) {
+        const sc = g.subcategories.find(s => s.id === b.dataset.id);
+        if (sc) return select(g, sc);
+      }
+    });
 }
 
-async function select(id) {
-  state.active = id;
+async function select(group, sc) {
+  state.active = sc.id;
+  state.activeLabel = `${group.nameKo} · ${sc.nameKo}`;
   drawRail();
-  state.papers = await (await fetch(`data/${id}.json`)).json();
+  state.papers = await (await fetch(`data/${sc.id}.json`)).json();
   render();
 }
 
@@ -152,10 +164,11 @@ function render() {
   const q = state.q.toLowerCase();
   let rows = state.papers.filter(p => !q ||
     (p.title + " " + (p.journal || "") + " " + (p.authors || []).join(" ")).toLowerCase().includes(q));
-  rows.sort(state.sort === "metric"
-    ? (a, b) => (b.metric ?? -1) - (a.metric ?? -1)
+  rows.sort(state.sort === "journal"
+    ? (a, b) => (a.journal || "").localeCompare(b.journal || "") || (b.year ?? 0) - (a.year ?? 0)
     : (a, b) => (b.year ?? 0) - (a.year ?? 0));
 
+  document.getElementById("crumb").innerHTML = `<b>${esc(state.activeLabel)}</b>`;
   document.getElementById("count").textContent = `${rows.length}편`;
   document.getElementById("list").innerHTML = rows.length ? rows.map(card).join("")
     : `<p class="empty">조건에 맞는 논문이 없습니다.</p>`;
@@ -164,18 +177,14 @@ function render() {
 function card(p) {
   const authors = p.authors?.length
     ? esc(p.authors[0]) + (p.authors.length > 1 ? ` 외 ${p.authors.length - 1}인` : "") : "";
-  // 막대: 임계값이 33.3% 지점(CSS 눈금 위치)에 오도록 임계값×3 만점으로 정규화
-  const pct = p.metric == null ? 0 : Math.min(100, (p.metric / (state.threshold * 3)) * 100);
   return `<article class="item">
-    <div class="gauge">
+    <div class="side">
       <span class="yr">${p.year ?? "—"}</span>
-      <div class="bar"><i style="width:${pct.toFixed(1)}%"></i></div>
-      ${p.metric == null ? "지표 없음" : p.metric.toFixed(2)}
+      <span>PMID ${p.pmid}</span>
     </div>
     <div>
       <h3><a href="https://pubmed.ncbi.nlm.nih.gov/${p.pmid}/" target="_blank" rel="noopener">${esc(p.title)}</a></h3>
-      <p class="meta"><em>${esc(p.journal || "")}</em>${authors ? " · " + authors : ""} · PMID ${p.pmid}
-        ${p.flagged ? '<span class="chip">지표 확인 필요</span>' : ""}</p>
+      <p class="meta"><em>${esc(p.journal || "")}</em>${authors ? " · " + authors : ""}</p>
       ${p.abstract ? `<details data-pmid="${p.pmid}"><summary>초록 보기</summary>
         <div class="abs-tabs" role="group" aria-label="초록 언어">
           <button data-view="ko" aria-pressed="true">한글 번역</button>
@@ -243,7 +252,6 @@ listEl.addEventListener("toggle", async e => {
     koEl.classList.remove("pending");
     d.dataset.trDone = "1";
   } catch {
-    // 실패 시 원문 탭으로 전환하고 안내. 다시 열면 재시도.
     setAbsView(d, "en");
     koEl.innerHTML = `번역 서비스에 연결하지 못했습니다. 다시 열면 재시도합니다. `
       + `<a href="https://translate.google.com/?sl=en&tl=ko&text=${encodeURIComponent(p.abstract.slice(0, 3000))}"`

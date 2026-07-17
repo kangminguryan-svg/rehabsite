@@ -47,10 +47,12 @@ class FableAnalyzer:
 
 
 def apply(conn, analyzer: "FableAnalyzer", limit: int) -> int:
-    """요약이 아직 없는 통과 논문에 대해 분석을 채운다. 처리 건수 반환."""
+    """요약이 아직 없는 수집 논문에 대해 분석을 채운다. 처리 건수 반환.
+    수집된 논문은 모두 큐레이션된 저널 소속이므로 초록 유무만 본다."""
     rows = conn.execute(
-        "SELECT pmid, title, journal, abstract FROM papers "
-        "WHERE passed_filter=1 AND summary IS NULL AND abstract IS NOT NULL LIMIT ?",
+        "SELECT DISTINCT p.pmid, p.title, p.journal, p.abstract FROM papers p "
+        "JOIN paper_categories c ON p.pmid=c.pmid "
+        "WHERE p.summary IS NULL AND p.abstract IS NOT NULL LIMIT ?",
         (limit,),
     ).fetchall()
     done = 0

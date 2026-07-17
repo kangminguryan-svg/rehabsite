@@ -31,13 +31,24 @@ class PubMed:
         r.raise_for_status()
         return r
 
-    def search(self, query: str, retmax: int = 10000, mindate: str = None) -> list[str]:
-        """검색식에 맞는 PMID 목록. mindate는 Entrez date(edat) 기준 증분 커서."""
+    def search(self, query: str, retmax: int = 9999, mindate: str = None,
+               maxdate: str = None, datetype: str = "edat") -> list[str]:
+        """검색식에 맞는 PMID 목록.
+        mindate/maxdate 지정 시 datetype(edat=Entrez date, pdat=발행일) 기준으로 제한.
+        연 단위 backfill은 datetype='pdat' 로 연도 범위를 넘겨 1만 상한을 회피한다."""
         params = {"term": query, "retmax": retmax, "retmode": "xml", "sort": "date"}
         if mindate:
-            params.update({"datetype": "edat", "mindate": mindate, "maxdate": "3000/12/31"})
+            params.update({"datetype": datetype, "mindate": mindate,
+                           "maxdate": maxdate or "3000/12/31"})
         root = ET.fromstring(self._get("esearch.fcgi", params).content)
         return [e.text for e in root.findall(".//IdList/Id")]
+
+    def count(self, query: str) -> int:
+        """검색식의 결과 건수만 반환(retmax=0). 저널 약어 검증용."""
+        root = ET.fromstring(self._get(
+            "esearch.fcgi", {"term": query, "retmax": 0, "retmode": "xml"}).content)
+        el = root.find(".//Count")
+        return int(el.text) if el is not None and el.text else 0
 
     def fetch(self, pmids: list[str], batch: int = 200) -> Iterator[dict]:
         """PMID 목록의 상세 레코드를 배치로 yield."""

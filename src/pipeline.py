@@ -1,20 +1,23 @@
 """파이프라인 진입점.
 
-  python -m src.pipeline backfill   # 2010년 이후 전체 최초 수집
-  python -m src.pipeline daily      # 마지막 실행 이후 신규만
-  python -m src.pipeline relookup   # 지표가 비어있는(unknown) 논문만 재조회
-  python -m src.pipeline export     # DB -> 프론트용 JSON
+  python -m src.pipeline backfill         # 2010년 이후 연 단위로 전체 최초 수집
+  python -m src.pipeline daily            # 마지막 실행 이후 신규만
+  python -m src.pipeline export           # DB -> 프론트용 JSON
+  python -m src.pipeline verify-journals  # 저널 약어별 PubMed 건수 확인(수집 안 함)
+
+수집은 categories.yaml의 저널 목록 기반이다. 각 하위 분류의 저널들을 OR로 묶고,
+topic_filter:true 인 분류에는 공통 주제 필터를 AND로 걸어 재활 관련 논문만 추린다.
+품질 필터(IF)는 저널 큐레이션으로 대체되어 사용하지 않는다.
 """
 import argparse
 import json
 import logging
-import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
 
-from . import db, metrics as m
+from . import db
 from .pubmed import PubMed
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,66 +28,90 @@ def load_config():
     with open(ROOT / "config/settings.yaml", encoding="utf-8") as f:
         settings = yaml.safe_load(f)
     with open(ROOT / "config/categories.yaml", encoding="utf-8") as f:
-        cats = yaml.safe_load(f)["categories"]
-    return settings, cats
+        cats = yaml.safe_load(f)
+    return settings, cats["groups"], cats.get("topic_filter", "")
 
 
 def _norm(s: str) -> str:
     """YAML 폴딩으로 남은 개행/중복 공백을 한 칸으로."""
-    return " ".join(s.split())
+    return " ".join((s or "").split())
 
 
-def build_query(cat: dict, settings: dict) -> str:
-    parts = [f"({_norm(cat['query'])})", f"({_norm(settings['pubmed']['common_filter'])})"]
+def subcats_of(groups):
+    """(group, subcategory) 쌍을 순서대로."""
+    return [(g, sc) for g in groups for sc in g["subcategories"]]
+
+
+def _journals_clause(sc: dict) -> str:
+    return "(" + " OR ".join(f'"{j["ta"]}"[ta]' for j in sc["journals"]) + ")"
+
+
+def _type_clause(settings: dict):
     pts = settings["pubmed"].get("publication_types") or []
-    if pts:
-        parts.append("(" + " OR ".join(f'"{p}"[pt]' for p in pts) + ")")
+    return "(" + " OR ".join(f'"{p}"[pt]' for p in pts) + ")" if pts else None
+
+
+def build_query(sc: dict, topic_filter: str, settings: dict, year: int = None) -> str:
+    """하위 분류 하나의 PubMed 검색식.
+    저널(OR) [AND 주제필터] AND 언어·초록 [AND 연도] [AND 논문타입]."""
+    parts = [_journals_clause(sc)]
+    if sc.get("topic_filter") and topic_filter:
+        parts.append("(" + _norm(topic_filter) + ")")
+    parts.append("English[Language]")
+    parts.append("hasabstract")
+    if year is not None:
+        parts.append(f'("{year}/01/01"[pdat] : "{year}/12/31"[pdat])')
+    tc = _type_clause(settings)
+    if tc:
+        parts.append(tc)
     return " AND ".join(parts)
 
 
 def run(mode: str):
-    settings, cats = load_config()
+    settings, groups, topic_filter = load_config()
     conn = db.connect(str(ROOT / settings["storage"]["db_path"]))
     pm = PubMed(settings["pubmed"]["tool"], settings["pubmed"]["email"],
                 settings["pubmed"]["api_key_env"])
-    lookup = m.MetricLookup(conn, settings["metrics"]["cache_days"], settings["pubmed"]["email"])
-    threshold = settings["metrics"]["threshold"]
-    policy = settings["metrics"]["unknown_journal_policy"]
-
+    retmax = settings["pubmed"]["retmax"]
+    min_year = settings["pubmed"]["min_year"]
+    this_year = datetime.now(timezone.utc).year
     today = datetime.now(timezone.utc).strftime("%Y/%m/%d")
-    totals = {"found": 0, "new": 0, "passed": 0}
+    totals = {"found": 0, "new": 0}
 
-    for cat in cats:
-        query = build_query(cat, settings)
-        cursor = None
+    for _g, sc in subcats_of(groups):
         if mode == "daily":
-            # 하루 겹치게 잡아 경계 누락 방지. 첫 실행이면 7일 전부터.
-            saved = db.get_cursor(conn, cat["id"])
-            cursor = saved or (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y/%m/%d")
+            # 마지막 실행 이후(edat) 신규만. 첫 실행이면 7일 전부터, 하루 겹침.
+            cursor = db.get_cursor(conn, sc["id"]) or \
+                (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y/%m/%d")
+            query = build_query(sc, topic_filter, settings)
+            pmids = pm.search(query, retmax, mindate=cursor, datetype="edat")
+        else:
+            # backfill: 연 단위로 나눠 esearch 1만 상한을 회피.
+            seen = set()
+            for yr in range(min_year, this_year + 1):
+                ids = pm.search(build_query(sc, topic_filter, settings, year=yr), retmax)
+                seen.update(ids)
+                if len(ids) >= retmax:
+                    log.warning("[backfill] %s %d년이 상한(%d) 도달 — 월 단위 분할 필요",
+                                sc["id"], yr, retmax)
+            pmids = list(seen)
 
-        pmids = pm.search(query, settings["pubmed"]["retmax"], mindate=cursor)
-        log.info("[%s] %s → %d PMIDs", mode, cat["id"], len(pmids))
+        log.info("[%s] %s → %d PMIDs", mode, sc["id"], len(pmids))
         totals["found"] += len(pmids)
 
         known = {r[0] for r in conn.execute("SELECT pmid FROM papers")}
         for rec in pm.fetch(pmids):
-            is_new = rec["pmid"] not in known
+            if rec["pmid"] not in known:
+                totals["new"] += 1
             db.upsert_paper(conn, {
                 **rec,
                 "authors": json.dumps(rec["authors"], ensure_ascii=False),
                 "pub_types": json.dumps(rec["pub_types"], ensure_ascii=False),
                 "mesh_terms": json.dumps(rec["mesh_terms"], ensure_ascii=False),
             })
-            db.link_category(conn, rec["pmid"], cat["id"])
-            if is_new:
-                totals["new"] += 1
-                value, source = lookup.lookup(rec["journal_issn"], rec["journal"])
-                passed = m.decide(value, threshold, policy)
-                db.set_filter_result(conn, rec["pmid"], value, source, passed)
-                if passed == 1:
-                    totals["passed"] += 1
+            db.link_category(conn, rec["pmid"], sc["id"])
         conn.commit()
-        db.set_cursor(conn, cat["id"], today)
+        db.set_cursor(conn, sc["id"], today)
         conn.commit()
 
     if settings["fable"]["enabled"]:
@@ -97,105 +124,71 @@ def run(mode: str):
     conn.close()
 
 
-def relookup():
-    """지표가 비어있는(metric_value IS NULL) 논문만 골라 지표를 다시 조회한다.
-    전체 재수집(backfill) 없이 개선된 조회 로직을 기존 데이터에 적용하기 위함."""
-    settings, cats = load_config()
-    conn = db.connect(str(ROOT / settings["storage"]["db_path"]))
-    lookup = m.MetricLookup(conn, settings["metrics"]["cache_days"], settings["pubmed"]["email"])
-
-    rows = conn.execute(
-        "SELECT pmid, journal, journal_issn FROM papers WHERE metric_value IS NULL"
-    ).fetchall()
-    log.info("[relookup] 지표 미확보 %d편 재조회 시작", len(rows))
-
-    # 1단계: 고유 ISSN을 배치(50개씩)로 미리 조회해 캐시를 채운다.
-    #   논문마다 개별 요청하면 요청 수가 수천 건이라 429에 걸린다.
-    issns = sorted({r["journal_issn"] for r in rows if r["journal_issn"]})
-    log.info("[relookup] 1단계: 고유 ISSN %d개 배치 조회", len(issns))
-    lookup.warm_issn_cache(
-        issns, progress=lambda done, tot: log.info("[relookup]   ISSN %d/%d", done, tot))
-
-    if lookup.rate_limited:
-        hrs = lookup.retry_after / 3600
-        log.warning("[relookup] 중단: OpenAlex 일일 요청 한도를 초과했습니다. "
-                    "약 %.1f시간 후(UTC 자정 리셋) 다시 실행하세요. "
-                    "기존 데이터는 그대로 두었습니다.", hrs)
-        conn.close()
-        return
-
-    # 2단계: 논문별 확정. ISSN 있는 건 대부분 캐시 히트(네트워크 거의 없음),
-    #   ISSN 없는 건만 저널명 폴백(고유 이름도 캐시됨).
-    log.info("[relookup] 2단계: 논문별 지표 확정")
-    fixed = 0
-    for i, r in enumerate(rows, 1):
-        value, source = lookup.lookup(r["journal_issn"], r["journal"])
-        conn.execute(
-            "UPDATE papers SET metric_value=?, metric_source=? WHERE pmid=?",
-            (value, source, r["pmid"]),
-        )
-        if value is not None:
-            fixed += 1
-        if i % 500 == 0:
-            conn.commit()
-            log.info("[relookup]   %d/%d 확정 (지표 확보 %d)", i, len(rows), fixed)
-    conn.commit()
-    log.info("[relookup] 완료: %d편 중 %d편 지표 확보", len(rows), fixed)
-    conn.close()
+def verify_journals():
+    """저널 약어([ta])별 PubMed 건수를 출력. 약어 오타(건수 0)를 잡기 위함."""
+    settings, groups, _ = load_config()
+    pm = PubMed(settings["pubmed"]["tool"], settings["pubmed"]["email"],
+                settings["pubmed"]["api_key_env"])
+    min_year = settings["pubmed"]["min_year"]
+    print(f"[verify] {min_year}년 이후 · 영어 · 초록 있음 기준\n")
+    for _g, sc in subcats_of(groups):
+        print(f"[{sc['id']}]")
+        for j in sc["journals"]:
+            q = (f'"{j["ta"]}"[ta] AND English[Language] AND hasabstract '
+                 f'AND ("{min_year}/01/01"[pdat] : "3000"[pdat])')
+            n = pm.count(q)
+            flag = "  ⚠ 0건 — 약어 확인" if n == 0 else ""
+            print(f"  {n:7d}  {j['ta']:34s} {j['name']}{flag}")
 
 
 def export():
-    settings, cats = load_config()
+    settings, groups, _ = load_config()
     conn = db.connect(str(ROOT / settings["storage"]["db_path"]))
     out_dir = ROOT / settings["storage"]["export_dir"]
     out_dir.mkdir(parents=True, exist_ok=True)
-    # 임계값은 export 시점에 metric_value로 직접 판정한다.
-    # (수집 시점의 passed_filter에 의존하면 임계값을 바꿀 때마다 재수집이 필요해짐)
-    threshold = settings["metrics"]["threshold"]
-    flag_unknown = settings["metrics"]["unknown_journal_policy"] == "flag"
-    cond = "p.metric_value >= ?" + (" OR p.metric_value IS NULL" if flag_unknown else "")
 
-    index = []
-    for cat in cats:
-        rows = conn.execute(
-            f"SELECT p.* FROM papers p JOIN paper_categories c ON p.pmid=c.pmid "
-            f"WHERE c.category_id=? AND ({cond}) "
-            f"ORDER BY p.pub_year DESC, p.pmid DESC",
-            (cat["id"], threshold),
-        ).fetchall()
-        papers = [{
-            "pmid": r["pmid"], "doi": r["doi"], "title": r["title"],
-            "abstract": r["abstract"], "journal": r["journal"], "year": r["pub_year"],
-            "authors": json.loads(r["authors"] or "[]"),
-            "pubTypes": json.loads(r["pub_types"] or "[]"),
-            "metric": r["metric_value"], "flagged": r["metric_value"] is None,
-            "summary": json.loads(r["summary"]) if r["summary"] else None,
-        } for r in rows]
-        (out_dir / f"{cat['id']}.json").write_text(
-            json.dumps(papers, ensure_ascii=False), encoding="utf-8")
-        index.append({"id": cat["id"], "nameKo": cat["name_ko"],
-                      "nameEn": cat["name_en"], "count": len(papers)})
+    index_groups = []
+    total = 0
+    for g in groups:
+        subs = []
+        for sc in g["subcategories"]:
+            rows = conn.execute(
+                "SELECT p.* FROM papers p JOIN paper_categories c ON p.pmid=c.pmid "
+                "WHERE c.category_id=? ORDER BY p.pub_year DESC, p.pmid DESC",
+                (sc["id"],),
+            ).fetchall()
+            papers = [{
+                "pmid": r["pmid"], "doi": r["doi"], "title": r["title"],
+                "abstract": r["abstract"], "journal": r["journal"], "year": r["pub_year"],
+                "authors": json.loads(r["authors"] or "[]"),
+                "pubTypes": json.loads(r["pub_types"] or "[]"),
+                "summary": json.loads(r["summary"]) if r["summary"] else None,
+            } for r in rows]
+            (out_dir / f"{sc['id']}.json").write_text(
+                json.dumps(papers, ensure_ascii=False), encoding="utf-8")
+            subs.append({"id": sc["id"], "nameKo": sc["name_ko"],
+                         "nameEn": sc.get("name_en", ""), "count": len(papers)})
+            total += len(papers)
+        index_groups.append({"id": g["id"], "nameKo": g["name_ko"], "subcategories": subs})
 
     (out_dir / "index.json").write_text(json.dumps({
-        "categories": index,
+        "groups": index_groups,
+        "total": total,
         "updatedAt": datetime.now(timezone.utc).isoformat(),
-        "metric": {"label": "OpenAlex 2yr mean citedness (IF 프록시)",
-                   "threshold": settings["metrics"]["threshold"]},
     }, ensure_ascii=False), encoding="utf-8")
-    log.info("export 완료 → %s", out_dir)
+    log.info("export 완료 → %s (총 %d편)", out_dir, total)
     conn.close()
 
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["backfill", "daily", "relookup", "export"])
+    ap.add_argument("mode", choices=["backfill", "daily", "export", "verify-journals"])
     args = ap.parse_args()
     if args.mode == "export":
         export()
-    elif args.mode == "relookup":
-        relookup()
-        export()
+    elif args.mode == "verify-journals":
+        verify_journals()
     else:
         run(args.mode)
         export()

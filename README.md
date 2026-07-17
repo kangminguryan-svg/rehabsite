@@ -1,56 +1,72 @@
-# 재활의학 논문 인덱스
+# 재활의학 · 신경학 논문 인덱스
 
-2010년 이후 PubMed 논문을 5개 재활 분야로 나눠 수집하고, 저널 인용지표로 걸러 정적 사이트로 보여줍니다.
+엄선한 신경학·재활의학 저널의 2010년 이후 PubMed 논문을 두 대분류(신경학·재활의학)와
+하위 분야로 나눠 수집하고 정적 사이트로 보여줍니다. 초록은 화면에서 한글로 번역해 봅니다.
 
 ## 구조
 
 ```
-config/categories.yaml   5개 분야 PubMed 검색식  ← 가장 먼저 손볼 파일
-config/settings.yaml     연도·지표 임계값·Fable 스위치
-src/pubmed.py            E-utilities (esearch → efetch)
-src/metrics.py           OpenAlex 저널 지표 조회 + 캐시
+config/categories.yaml   대분류·하위분류·저널 목록 + 주제 필터  ← 가장 먼저 손볼 파일
+config/settings.yaml     연도·논문타입·Fable 스위치
+src/pubmed.py            E-utilities (esearch → efetch), 연 단위/건수 조회
 src/db.py                SQLite 스키마
 src/fable.py             Fable 분석 훅 (기본 off)
-src/pipeline.py          backfill / daily / export
-web/index.html           프론트엔드 (web/data/*.json 소비)
+src/pipeline.py          backfill / daily / export / verify-journals
+web/index.html           프론트엔드 (web/data/*.json 소비, 2단계 네비 + 초록 번역)
+scripts/                 진단 도구 (저널 건수 확인 등)
 .github/workflows/daily.yml   매일 05:00 KST 증분 수집
 ```
+
+## 수집 방식
+
+품질 필터를 IF(인용지표) 대신 **저널 큐레이션**으로 한다. `categories.yaml`에 나열한
+저널의 게재분만 모은다. 각 하위 분류는 저널 약어(NLM title abbreviation) 목록으로 정의되고,
+`topic_filter: true` 인 분류(대형 종합지·광범위 정형/물리치료지)는 공통 주제 필터를 AND로
+걸어 재활 관련 주제만 추린다. 전문지(`topic_filter: false`)는 게재분 전체를 담는다.
+
+한 논문이 여러 분류에 걸릴 수 있다(예: Stroke 지는 신경학·재활의학 양쪽). 스키마가 N:M을
+허용하므로 각 분류에 중복 노출된다.
 
 ## 시작하기
 
 ```bash
 pip install -r requirements.txt
-# config/settings.yaml 의 pubmed.email 을 본인 주소로 교체 (NCBI 요구사항)
-export NCBI_API_KEY=...        # https://account.ncbi.nlm.nih.gov 에서 발급, 없어도 동작하나 3배 느림
+export NCBI_API_KEY=...        # https://account.ncbi.nlm.nih.gov 에서 발급, 없어도 동작하나 느림
 
-python -m src.pipeline backfill   # 최초 전체 수집 (수 시간 소요 가능)
-python -m src.pipeline daily      # 이후 증분
-python -m src.pipeline export     # DB → web/data/*.json
+python -m src.pipeline verify-journals   # (선택) 저널 약어별 건수 확인 — 오타 점검
+python -m src.pipeline backfill          # 2010년 이후 연 단위 전체 수집
+python -m src.pipeline daily             # 이후 증분
+python -m src.pipeline export            # DB → web/data/*.json
 
-cd web && python -m http.server 8000   # http://localhost:8000
+cd web && python -m http.server 8000     # http://localhost:8000
 ```
 
-## Impact Factor에 대해
+윈도우 PowerShell에서는 `export NCBI_API_KEY=...` 대신 `$env:NCBI_API_KEY="..."`.
 
-PubMed도 OpenAlex도 Clarivate의 Impact Factor를 제공하지 않습니다. 유료 라이선스 지표이기 때문입니다.
-이 프로젝트는 대신 **OpenAlex의 `2yr_mean_citedness`**(최근 2년 평균 피인용수)를 프록시로 씁니다.
-정의상 IF와 매우 유사하지만 집계 모수가 달라 **같은 값이 아닙니다**. 저널에 따라 0.3~0.8 정도 차이날 수 있으므로
-임계값 2.0은 "대략 IF 2점 언저리"로 이해해야 합니다.
+## 저널 목록 손보기
 
-정식 IF가 필요하면 JCR CSV를 구해 `journal_metrics` 테이블에 직접 적재하세요.
-스키마가 이미 `(issn, journal_name, metric_value, source)` 라서 소스만 바꿔 끼우면 됩니다.
+`categories.yaml`의 각 하위 분류 `journals` 항목에 `{name: 표시용 이름, ta: PubMed 약어}` 로
+추가·삭제한다. 약어가 맞는지는 `verify-journals`로 건수를 확인한다(0건이면 약어 오타 가능).
+대형 종합지에서 잡음이 많으면 `topic_filter: true` 로, 전문지를 통째로 담으려면 `false` 로.
 
-지표를 못 구한 저널은 `unknown_journal_policy` 설정에 따라 처리됩니다. 기본값 `flag`는
-버리지 않고 화면에 "지표 확인 필요" 배지를 달아 보여줍니다. 신생 저널을 놓치지 않기 위함입니다.
+## 논문 타입 제한
+
+RCT·메타분석만 보려면 `settings.yaml` 의 `publication_types` 에 추가하면 모든 분류에
+AND로 적용된다. 예: `[Randomized Controlled Trial, Meta-Analysis, Systematic Review]`.
+
+## 초록 한글 번역
+
+프론트엔드에서 "초록 보기"를 열면 Google 번역(무키)으로 한글 번역을 표시하고 원문 탭으로
+전환할 수 있다. 번역 결과는 브라우저에 캐시된다. 실패 시 원문과 외부 번역 링크로 폴백한다.
 
 ## Fable 켜기
 
 `config/settings.yaml` 에서 `fable.enabled: true` 로 바꾸고 `ANTHROPIC_API_KEY` 를 설정하면,
-통과한 논문의 초록에 구조화 요약(연구설계·대상·중재·주요결과)과 태그가 붙습니다.
-`max_per_run` 으로 실행당 건수를 제한해 비용을 통제합니다.
+수집된 논문의 초록에 구조화 요약(연구설계·대상·중재·주요결과)과 태그가 붙는다.
+`max_per_run` 으로 실행당 건수를 제한해 비용을 통제한다.
 
-## 앞으로 손볼 것
+## 참고
 
-- **검색식 튜닝**: `categories.yaml` 의 각 query를 PubMed에 직접 붙여넣고 결과 수와 정밀도 확인
-- **논문 타입 제한**: RCT·메타분석만 볼 거면 `settings.yaml` 의 `publication_types` 에 추가
-- **중복 카테고리**: 한 논문이 여러 분야에 걸릴 수 있고, 스키마는 이미 N:M로 허용
+- `metrics.py`(OpenAlex 지표 조회)는 현재 수집·필터에 쓰지 않는다. 향후 저널 지표를
+  화면에 표기하고 싶을 때를 위해 남겨둔 것이다.
+- backfill은 연 단위로 나눠 수집해 esearch의 1회 1만 건 상한을 회피한다.
