@@ -24,6 +24,8 @@ jobs:
           NCBI_API_KEY: ${{ secrets.NCBI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python -m src.pipeline backfill
+      - name: Refresh citation counts
+        run: python -m src.pipeline citations
       - name: Commit updated data
         run: |
           git config user.name  "github-actions[bot]"
