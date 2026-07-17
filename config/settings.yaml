@@ -3,7 +3,7 @@ pubmed:
   tool: rehab-papers
   email: kangmingu.ryan@gmail.com
   api_key_env: NCBI_API_KEY
-  min_year: 2010    # 이 해부터 연도별로 나눠 수집(연 단위 청크로 1만 상한 회피)
+  min_year: 2022    # 이 해부터 연도별로 나눠 수집(연 단위 청크로 1만 상한 회피)
   # 언어·초록 필터는 코드에서 자동 AND. 연도는 backfill 시 연 단위로 처리.
   # 논문 타입 제한이 필요하면 여기에 추가. 지금은 전체(열어둠).
   # 예: [Randomized Controlled Trial, Meta-Analysis, Systematic Review]
