@@ -82,3 +82,8 @@ AND로 적용된다. 예: `[Randomized Controlled Trial, Meta-Analysis, Systemat
 - `metrics.py`(OpenAlex 지표 조회)는 현재 수집·필터에 쓰지 않는다. 향후 저널 지표를
   화면에 표기하고 싶을 때를 위해 남겨둔 것이다.
 - backfill은 연 단위로 나눠 수집해 esearch의 1회 1만 건 상한을 회피한다.
+
+## 부록: Glidepath (매크로 트래커)
+
+`web/macro/index.html` — 칼로리·매크로·체성분을 기록하는 독립형 정적 앱.
+`python serve.py` 실행 후 http://localhost:8000/macro/ 에서 열면 되고, 데이터는 브라우저 localStorage에 저장된다.
